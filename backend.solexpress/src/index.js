@@ -1,19 +1,31 @@
 require('dotenv').config();
+require('module-alias/register');
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
-const userRoutes = require('./server/routes/user.route');
-const { swaggerUi, swaggerSpecs } = require('./server/config/swagger');
-const pool = require('./server/config/db');
-
+const swaggerUi = require('swagger-ui-express');
+const userRoutes = require('./routes/user.route');
+const { swaggerSpecs } = require('./config/swagger');
+const pool = require('./config/db');
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// Middleware
 app.use(cors());
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
+// Routes
+app.use('/api/users', userRoutes);
 
+// Swagger documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
+  explorer: true,
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: "Solexpress API Documentation"
+}));
+
+// Database connection test
 (async () => {
   try {
     await pool.query('SELECT 1');
@@ -22,8 +34,6 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
     console.error('Database connection failed:', err.message);
   }
 })();
-
-app.use('/api/users', userRoutes);
 
 app.get('/', (req, res) => {
   res.send('Welcome to the backend API!');
@@ -38,7 +48,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Something went wrong!' });
 });
 
+// Start server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Swagger docs available at http://localhost:${PORT}/api-docs`);
-});
+}); 

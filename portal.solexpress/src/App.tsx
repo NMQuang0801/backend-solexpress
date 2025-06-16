@@ -1,17 +1,35 @@
-import { Route, Routes } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import './assets/css/global.scss';
-import Layout from './components/layout/Layout';
-import { Customer, Dashboard, Login, Packet } from './pages';
+import Layout from './components/Layout/Layout';
+import { Error, Home, Login } from './pages';
 
 const App = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const userStr = localStorage.getItem('user');
+    if (token && userStr) {
+      setIsAuthenticated(true);
+      if (location.pathname.includes('login')) {
+        navigate('/');
+      }
+    } else {
+      setIsAuthenticated(false);
+      navigate('/login');
+    }
+  }, [location.pathname, navigate]);
+
   return (
     <Routes>
-      <Route path="/login" element={<Login />} />
       <Route path="/" element={<Layout />}>
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/packet" element={<Packet />} />
-        <Route path="/customer" element={<Customer />} />
+        <Route path="/" element={<Home />} />
       </Route>
+      {!isAuthenticated && <Route path="/login" element={<Login />} />}
+      <Route path="*" element={<Error />} />
     </Routes>
   );
 };

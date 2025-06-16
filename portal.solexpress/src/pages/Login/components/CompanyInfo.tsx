@@ -1,4 +1,4 @@
-import { Col, Button, Image } from 'react-bootstrap';
+import { Button, Col, Image } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 
 const CompanyInfo = () => {

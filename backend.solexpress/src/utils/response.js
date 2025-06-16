@@ -1,44 +1,45 @@
 class ApiResponse {
-  static success(data = null, message = 'Success', status = 200) {
+  static success(data = null, message = 'Success') {
     return {
-      status,
+      status: 200,
       message,
       data,
-      success: true
+      success: true,
     };
   }
 
-  static error(message = 'Error', status = 500, data = null) {
+  static error(message = 'Error', errorCode = 'SERVER_ERROR', data = null) {
     return {
-      status,
+      status: 200,
       message,
       data,
-      success: false
+      success: false,
+      errorCode,
     };
   }
 
   static created(data = null, message = 'Created successfully') {
-    return this.success(data, message, 201);
+    return this.success(data, message);
   }
 
   static badRequest(message = 'Bad request', data = null) {
-    return this.error(message, 400, data);
+    return this.error(message, 'BAD_REQUEST', data);
   }
 
   static unauthorized(message = 'Unauthorized', data = null) {
-    return this.error(message, 401, data);
+    return this.error(message, 'UNAUTHORIZED', data);
   }
 
   static forbidden(message = 'Forbidden', data = null) {
-    return this.error(message, 403, data);
+    return this.error(message, 'FORBIDDEN', data);
   }
 
   static notFound(message = 'Not found', data = null) {
-    return this.error(message, 404, data);
+    return this.error(message, 'NOT_FOUND', data);
   }
 
   static validationError(message = 'Validation error', data = null) {
-    return this.error(message, 422, data);
+    return this.error(message, 'VALIDATION_ERROR', data);
   }
 }
 

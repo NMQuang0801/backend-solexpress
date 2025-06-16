@@ -9,28 +9,28 @@ const loginUser = async (req, res) => {
     const [users] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
 
     if (users.length === 0) {
-      return res.status(401).json(
-        ApiResponse.unauthorized('Invalid username or password')
+      return res.json(
+        ApiResponse.badRequest('Invalid username or password')
       );
     }
 
     const user = users[0];
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) {
-      return res.status(401).json(
-        ApiResponse.unauthorized('Invalid username or password')
+      return res.json(
+        ApiResponse.badRequest('Invalid username or password')
       );
     }
 
     if (!user.isActive) {
-      return res.status(401).json(
-        ApiResponse.unauthorized('Account is inactive')
+      return res.json(
+        ApiResponse.badRequest('Account is inactive')
       );
     }
 
     if (user.isDeleted) {
-      return res.status(401).json(
-        ApiResponse.unauthorized('Account is deleted')
+      return res.json(
+        ApiResponse.badRequest('Account is deleted')
       );
     }
 

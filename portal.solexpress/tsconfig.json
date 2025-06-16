@@ -21,11 +21,14 @@
     "jsx": "react-jsx",
     "baseUrl": "src",
     "paths": {
-      "@/*": ["*"]
+      "@/*": [
+        "*"
+      ]
     }
   },
   "include": [
-    "src"
+    "src",
+    "declarations.d.ts"
   ],
   "exclude": [
     "node_modules"

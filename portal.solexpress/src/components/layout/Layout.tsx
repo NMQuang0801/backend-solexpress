@@ -1,18 +1,27 @@
-import { Container } from 'react-bootstrap';
+import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
-import Header from './Header';
-import './Layout.scss';
+import { Footer, Header, Sidebar } from './components';
+import './styles.scss';
 
 const Layout = () => {
+  const [isActiveSidebarMenuMobile, setIsActiveSidebarMenuMobile] = useState(false);
+
   return (
-    <div className="layout">
-      <Header />
-      <div className="layout__content">
-        <Container className="layout__main">
-          <Outlet />
-        </Container>
+    <React.Fragment>
+      <Header
+        isActiveSidebarMenuMobile={isActiveSidebarMenuMobile}
+        setIsActiveSidebarMenuMobile={setIsActiveSidebarMenuMobile}
+      />
+      <div className="body_container">
+        <div className="main__sidebar__content">
+          <Sidebar isActiveSidebarMenuMobile={isActiveSidebarMenuMobile} />
+          <div className="main-content">
+            <Outlet />
+          </div>
+        </div>
       </div>
-    </div>
+      <Footer />
+    </React.Fragment>
   );
 };
 

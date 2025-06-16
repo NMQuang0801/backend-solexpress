@@ -28,4 +28,25 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-} 
+}
+
+.body_container {
+  position: relative;
+  padding-top: 75px;
+  min-height: calc(100vh - 50px);
+}
+
+a {
+  text-decoration: none !important;
+  color: #288AD6;
+}
+
+p {
+  margin: 0;
+}
+
+ul {
+  list-style-type: none;
+  padding: 0 !important;
+  margin: 0 !important;
+}

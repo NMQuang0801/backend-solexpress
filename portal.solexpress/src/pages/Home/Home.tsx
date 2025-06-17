@@ -1,10 +1,29 @@
-import React from 'react';
+import { Col, Container, Row } from 'react-bootstrap';
+import { FileUpload, LabelTable } from './components';
+import './styles.scss';
 
 const Home = () => {
   return (
-    <React.Fragment>
-      <div>Home</div>
-    </React.Fragment>
+    <Container className="d-flex flex-column gap-3">
+      <Row className="justify-content-md-center">
+        <Col md="auto">
+          <span className="fs-3 fw-bold text-center">CREATE LABEL AU</span>
+        </Col>
+      </Row>
+      <Row className="justify-content-md-left">
+        <Col md="auto" className="create-label-info">
+          <span>Lưu ý:</span>
+          <ul className="d-flex flex-column gap-1">
+            <li className="fw-semibold">{`Servicecode for AUPOST: :AP-SYD-AUPARCELPOST"`}</li>
+            <li className="fw-semibold">{`Servicecode for TOLL: "AP-AU-TOLLSTA-SYD"`}</li>
+            <li className="fw-semibold">{`Servicecode for AUPOST: "AP-SYD-AUPARCELPOST"`}</li>
+            <li className="fw-semibold">{`Servicecode for TOLL: "AP-AU-TOLLSTA-MEL"`}</li>
+          </ul>
+        </Col>
+      </Row>
+      <FileUpload />
+      <LabelTable />
+    </Container>
   );
 };
 

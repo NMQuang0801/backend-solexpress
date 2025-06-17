@@ -1,0 +1,31 @@
+.create-label-info {
+  color: #007bff;
+  font-size: 16px;
+  font-weight: 400;
+
+  li {
+    list-style-type: '- ';
+    margin-left: 8px;
+  }
+}
+
+.file-upload {
+  background-color: #EEEEEE;
+  padding: 8px;
+  border: 1px solid gray;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  .btn-import-sample {
+    color: #0056b3;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    text-align: center;
+    padding: 0;
+    width: 100%;
+    margin: 0 auto;
+  }
+}

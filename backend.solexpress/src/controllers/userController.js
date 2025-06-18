@@ -1,12 +1,15 @@
-const pool = require('../config/db');
+const sqlService = require('../config/db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const ApiResponse = require('../utils/response');
+const { LoginResponse } = require('../models/response/userResponse');
+const { User } = require('../models/user');
+const { LoginRequest } = require('../models/request/user');
 
 const loginUser = async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password } = new LoginRequest(req.body);
   try {
-    const [users] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
+    const [users] = await sqlService.query('SELECT * FROM users WHERE username = ?', [username]);
 
     if (users.length === 0) {
       return res.json(
@@ -15,44 +18,35 @@ const loginUser = async (req, res) => {
     }
 
     const user = users[0];
-    const validPassword = await bcrypt.compare(password, user.password);
+    const validPassword = await bcrypt.compare(password, user.Password);
+
     if (!validPassword) {
       return res.json(
         ApiResponse.badRequest('Invalid username or password')
       );
     }
 
-    if (!user.isActive) {
+    if (!user.IsActive) {
       return res.json(
         ApiResponse.badRequest('Account is inactive')
       );
     }
 
-    if (user.isDeleted) {
+    if (user.IsDeleted) {
       return res.json(
         ApiResponse.badRequest('Account is deleted')
       );
     }
 
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
+      { id: user.Id, username: user.Username, role: user.Role },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
 
-    const userData = {
-      id: user.id,
-      name: user.name,
-      username: user.username,
-      role: user.role
-    };
+    const response = new LoginResponse(token, new User(user));
 
-    res.json(
-      ApiResponse.success(
-        { token, user: userData },
-        'Login successful'
-      )
-    );
+    res.json(ApiResponse.success(response, 'Login successful'));
   } catch (error) {
     res.status(500).json(
       ApiResponse.error(error.message)
@@ -65,7 +59,7 @@ const registerUser = async (req, res) => {
   const creatorUsername = req.user.username;
 
   try {
-    const [existingUsers] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
+    const [existingUsers] = await sqlService.query('SELECT * FROM users WHERE username = ?', [username]);
     if (existingUsers.length > 0) {
       return res.status(400).json(
         ApiResponse.badRequest('Username already registered')
@@ -75,7 +69,7 @@ const registerUser = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    await pool.query(
+    await sqlService.query(
       'INSERT INTO users (name, username, password, role, createdBy, updatedBy) VALUES (?, ?, ?, ?, ?, ?)',
       [name, username, hashedPassword, role, creatorUsername, creatorUsername]
     );

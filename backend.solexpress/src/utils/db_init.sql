@@ -1,13 +1,26 @@
 CREATE TABLE IF NOT EXISTS users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    username VARCHAR(255) UNIQUE NOT NULL,
-    password VARCHAR(255) NOT NULL,
-    role ENUM('user', 'admin') DEFAULT 'user',
-    isActive boolean DEFAULT 1,
-    createdDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    createdBy VARCHAR(255) NULL,
-    updatedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    updatedBy VARCHAR(255) NULL,
-    isDeleted boolean DEFAULT 0
+    Id INT AUTO_INCREMENT PRIMARY KEY,
+    Name VARCHAR(255) NOT NULL,
+    Username VARCHAR(255) UNIQUE NOT NULL,
+    Password VARCHAR(255) NOT NULL,
+    Role ENUM('user', 'admin') DEFAULT 'user',
+    IsActive boolean DEFAULT 1,
+    CreatedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CreatedBy VARCHAR(255) NULL,
+    UpdatedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UpdatedBy VARCHAR(255) NULL,
+    IsDeleted boolean DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS ksn_label (
+    Id INT AUTO_INCREMENT PRIMARY KEY,
+    OrderId VARCHAR(255) NOT NULL,
+    LabelUrl VARCHAR(255) NULL,
+    Datetime DATETIME NULL,
+    ReferenceNo VARCHAR(100) NULL,
+    State VARCHAR(100) NULL,
+    Postcode VARCHAR(20) NULL,
+    ServiceCode VARCHAR(50) NULL,
+    Status VARCHAR(50) NULL,
+    UserId VARCHAR(255) NULL,
 );

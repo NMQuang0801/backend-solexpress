@@ -3,20 +3,26 @@ require('module-alias/register');
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const multer = require('multer');
 const swaggerUi = require('swagger-ui-express');
-const userRoutes = require('./routes/user.route');
+const userRoutes = require('./routes/userRoute');
+const labelRoutes = require('./routes/labelRoute')
 const { swaggerSpecs } = require('./config/swagger');
 const pool = require('./config/db');
 const app = express();
 const PORT = process.env.PORT || 4000;
+const { lowercaseKeysMiddleware } = require('./middlewares/middlewareLowercase');
 
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-
+app.use(lowercaseKeysMiddleware);
 // Routes
 app.use('/api/users', userRoutes);
+
+const upload = multer({ storage: multer.memoryStorage() });
+app.use('/api/labels', upload.single('file'), labelRoutes);
 
 // Swagger documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {

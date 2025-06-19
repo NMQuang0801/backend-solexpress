@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Button, Col, Form, Row, Alert } from 'react-bootstrap';
 import { labelsService } from '@/services';
+import { useState } from 'react';
+import { Alert, Button, Col, Form, Row } from 'react-bootstrap';
 
 const FileUpload = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -31,19 +31,25 @@ const FileUpload = () => {
 
     try {
       const service = labelsService();
-      await service.importLabels(selectedFile);
-      setMessage({ type: 'success', text: 'Import labels thành công!' });
+      const response = await service.importLabels(selectedFile);
+      if (response?.data?.success) {
+        setMessage({ type: 'success', text: 'Import labels thành công!' });
+      } else {
+        setMessage({
+          type: 'success',
+          text: response?.data?.message || 'Có lỗi xảy ra khi import labels',
+        });
+      }
       setSelectedFile(null);
-      // Reset file input
       const fileInput = document.getElementById('formFile') as HTMLInputElement;
       if (fileInput) {
         fileInput.value = '';
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Import error:', error);
       setMessage({
         type: 'error',
-        text: error.response?.data?.message || 'Có lỗi xảy ra khi import labels',
+        text: 'Có lỗi xảy ra khi import labels',
       });
     } finally {
       setIsLoading(false);
@@ -52,7 +58,7 @@ const FileUpload = () => {
 
   return (
     <Row>
-      <Col xs={6} className="file-upload">
+      <Col xxs={12} lg={6} className="file-upload">
         <Row className="w-100 mx-auto">
           <a href={'/static/label-sample.zip'} download className="btn-import-sample">
             CSV IMPORT SAMPLE

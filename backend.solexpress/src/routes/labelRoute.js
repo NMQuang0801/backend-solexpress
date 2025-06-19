@@ -81,6 +81,11 @@ router.post('/import', verifyToken, labelController.importLabels);
  *         schema:
  *           type: integer
  *         description: Page size (default 20)
+ *       - in: query
+ *         name: textSearch
+ *         schema:
+ *           type: string
+ *         description: Text search (default empty)
  *     responses:
  *       200:
  *         description: List of labels

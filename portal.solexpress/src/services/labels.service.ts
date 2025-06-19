@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axiosInstance from './axiosInstance';
 
 const labelsService = () => {
   const importLabels = (file: File) => {
@@ -7,7 +7,7 @@ const labelsService = () => {
 
     const token = localStorage.getItem('token');
 
-    return axios.post(`${process.env.REACT_APP_API_URL}/api/labels/import`, formData, {
+    return axiosInstance.post(`${process.env.REACT_APP_API_URL}/api/labels/import`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
         Authorization: `Bearer ${token}`,
@@ -15,16 +15,17 @@ const labelsService = () => {
     });
   };
 
-  const getLabels = (pageIndex: number = 1, pageSize: number = 20) => {
+  const getLabels = (pageIndex: number = 1, pageSize: number = 20, textSearch: string = '') => {
     const token = localStorage.getItem('token');
 
-    return axios.get(`${process.env.REACT_APP_API_URL}/api/labels`, {
+    return axiosInstance.get(`${process.env.REACT_APP_API_URL}/api/labels`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
       params: {
         pageIndex,
         pageSize,
+        textSearch,
       },
     });
   };

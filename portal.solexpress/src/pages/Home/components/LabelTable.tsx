@@ -1,5 +1,5 @@
 import { labelsService } from '@/services';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Col, Form, Pagination, Row, Spinner, Table } from 'react-bootstrap';
 import { Label, LabelsResponse } from '../types';
 
@@ -8,18 +8,21 @@ const LabelTable = () => {
   const [loading, setLoading] = useState(true);
   const [pageIndex, setPageIndex] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [textSearch, setTextSearch] = useState('');
   const [total, setTotal] = useState(0);
+  const searchTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     fetchLabels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageIndex, pageSize]);
 
-  const fetchLabels = async () => {
+  const fetchLabels = async (search = textSearch, page = pageIndex) => {
     setLoading(true);
 
     try {
       const service = labelsService();
-      const response = await service.getLabels(pageIndex, pageSize);
+      const response = await service.getLabels(page, pageSize, search);
       const data: LabelsResponse = response.data.data;
       setLabels(data.data || []);
       setTotal(data.total || 0);
@@ -38,6 +41,17 @@ const LabelTable = () => {
 
   const handlePageChange = (page: number) => {
     setPageIndex(page);
+  };
+
+  const handleSearch = (value: string) => {
+    setTextSearch(value);
+    if (searchTimeout.current) {
+      clearTimeout(searchTimeout.current);
+    }
+    searchTimeout.current = setTimeout(() => {
+      setPageIndex(1);
+      fetchLabels(value, 1);
+    }, 500);
   };
 
   const totalPages = useMemo(() => Math.ceil(total / pageSize), [total, pageSize]);
@@ -123,6 +137,14 @@ const LabelTable = () => {
 
   return (
     <React.Fragment>
+      <Row>
+        <Form.Control
+          type="text"
+          placeholder="Nhập từ khóa hoặc ký tự..."
+          value={textSearch}
+          onChange={(e) => handleSearch(e.target.value)}
+        />
+      </Row>
       <Row>
         <Table className="tablet-packet" bordered striped responsive>
           <thead>

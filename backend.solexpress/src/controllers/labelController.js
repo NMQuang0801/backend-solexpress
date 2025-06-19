@@ -69,7 +69,7 @@ const importLabels = async (req, res) => {
   const stream = require('stream');
 
   if (!req.file || req.file.mimetype !== 'text/csv') {
-    return res.json(ApiResponse.badRequest('Invalid file type. Please upload a CSV file.'));
+    return res.json(ApiResponse.badRequest('File không đúng. Vui lòng upload file CSV.'));
   }
   const userId = req.user.username;
   try {
@@ -106,19 +106,21 @@ const importLabels = async (req, res) => {
                 }
               );
               if (response && response.data) {
-                const result = response.data;
-                if (result.item && result.item[0]) {
+                const result = response.data.item;
+                console.log(result?.length, result[0])
+                if (result?.length > 0 && result[0]) {
+                  const item = result[0];
                   await sqlService.query(
                     'INSERT INTO ksn_label (OrderId, LabelUrl, Datetime, ReferenceNo, State, Postcode, ServiceCode, Status, UserId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
                     [
-                      result.item[0].OrderId,
-                      result.item[0].LabelUrls[0].LabelUrl,
+                      item.OrderId,
+                      item.LabelUrls[0].LabelUrl,
                       new Date().toISOString().slice(0, 19).replace('T', ' '),
                       line.referenceNo,
                       line.state,
                       line.postcode,
                       line.serviceType,
-                      result.ResultDesc,
+                      response.data.ResultDesc,
                       userId
                     ]
                   );
@@ -134,11 +136,11 @@ const importLabels = async (req, res) => {
             orderItems = '';
           }
         }
-        res.json(ApiResponse.success(results, 'Successful'));
+        res.json(ApiResponse.success(results, 'Thành công.'));
       })
       .on('error', (err) => {
-        console.error('CSV Parse Error:', err);
-        res.json(ApiResponse.badRequest('CSV parsing failed'));
+        console.error('Upload CSV có lỗi xảy ra:', err);
+        res.json(ApiResponse.badRequest('Upload CSV không thành công'));
       });
   } catch (error) {
     console.error('Error:', error);
@@ -148,31 +150,41 @@ const importLabels = async (req, res) => {
 
 const getLabels = async (req, res) => {
   try {
-    const { pageIndex = 1, pageSize = 20 } = req.query;
+    const { textSearch = '', pageIndex = 1, pageSize = 20 } = req.query;
 
     if (!pageIndex || pageIndex < 1) {
-      return res.json(ApiResponse.error('pageIndex is incorrect'));
+      return res.json(ApiResponse.error('PageIndex không đúng.'));
     }
 
     if (!pageSize || pageSize < 1) {
-      return res.json(ApiResponse.error('pageSize is incorrect'));
+      return res.json(ApiResponse.error('PageSize không đúng.'));
     }
 
-    const userId = req.user.id;
+    const queryParams = [];
+    let querySearch = '';
 
-    const countQuery = `SELECT COUNT(*) AS total FROM ksn_label WHERE OrderId <> '' AND UserId = ? `;
-    const [countRows] = await sqlService.query(countQuery, [userId]);
+    if (textSearch && textSearch.trim() !== '') {
+      const escapedSearch = textSearch.trim().replace(/%/g, '\\%').replace(/_/g, '\\_');;
+      const likeValue = `%${escapedSearch}%`;
+      querySearch = `AND ( OrderId LIKE ? OR ReferenceNo LIKE ? OR State LIKE ? OR  Postcode LIKE ?)`;
+      queryParams.push(likeValue, likeValue, likeValue, likeValue);
+    }
+
+    const countQuery = `SELECT COUNT(*) AS total FROM ksn_label WHERE OrderId <> '' ${querySearch} `;
+    const [countRows] = await sqlService.query(countQuery, queryParams);
     const total = countRows[0]?.total || 0;
 
-    const dataQuery = `SELECT * FROM ksn_label WHERE OrderId <> '' AND UserId = ? ORDER BY id DESC LIMIT ? OFFSET ?`;
+    const dataQuery = `SELECT * FROM ksn_label WHERE OrderId <> '' ${querySearch} ORDER BY id DESC LIMIT ? OFFSET ?`;
     const limit = parseInt(pageSize);
     const offset = (parseInt(pageIndex) - 1) * limit;
-    const [data] = await sqlService.query(dataQuery, [userId, limit, offset]);
+    queryParams.push(limit, offset);
+
+    const [data] = await sqlService.query(dataQuery, queryParams);
 
     const response = new LablesResponse(total, data, limit, parseInt(pageIndex));
     res.json(ApiResponse.success(response, 'Successful'));
   } catch (err) {
-    console.error('Error in getLabels:', err);
+    console.error('Có lỗi xảy ra:', err);
     res.status(500).json(ApiResponse.error('Internal Server Error'));
   }
 };

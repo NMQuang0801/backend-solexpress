@@ -1,5 +1,6 @@
 import { Container, Row } from 'react-bootstrap';
 import { CompanyInfo, LoginForm } from './components';
+import './styles.scss';
 
 const Login = () => {
   return (

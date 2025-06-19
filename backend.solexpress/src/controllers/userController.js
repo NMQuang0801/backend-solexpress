@@ -13,7 +13,7 @@ const loginUser = async (req, res) => {
 
     if (users.length === 0) {
       return res.json(
-        ApiResponse.badRequest('Invalid username or password')
+        ApiResponse.badRequest('Tài khoản hoặc mật khẩu không đúng.')
       );
     }
 
@@ -22,19 +22,19 @@ const loginUser = async (req, res) => {
 
     if (!validPassword) {
       return res.json(
-        ApiResponse.badRequest('Invalid username or password')
+        ApiResponse.badRequest('Tài khoản hoặc mật khẩu không đúng.')
       );
     }
 
     if (!user.IsActive) {
       return res.json(
-        ApiResponse.badRequest('Account is inactive')
+        ApiResponse.badRequest('Tài khoản đã ngưng hoạt động.')
       );
     }
 
     if (user.IsDeleted) {
       return res.json(
-        ApiResponse.badRequest('Account is deleted')
+        ApiResponse.badRequest('Tài khoản đã xóa.')
       );
     }
 
@@ -46,7 +46,7 @@ const loginUser = async (req, res) => {
 
     const response = new LoginResponse(token, new User(user));
 
-    res.json(ApiResponse.success(response, 'Login successful'));
+    res.json(ApiResponse.success(response, 'Đăng nhập thành công.'));
   } catch (error) {
     res.status(500).json(
       ApiResponse.error(error.message)
@@ -62,7 +62,7 @@ const registerUser = async (req, res) => {
     const [existingUsers] = await sqlService.query('SELECT * FROM users WHERE username = ?', [username]);
     if (existingUsers.length > 0) {
       return res.status(400).json(
-        ApiResponse.badRequest('Username already registered')
+        ApiResponse.badRequest('Tài khoản đã tồn tại.')
       );
     }
 
@@ -75,7 +75,7 @@ const registerUser = async (req, res) => {
     );
 
     res.status(201).json(
-      ApiResponse.created(null, 'User created successfully')
+      ApiResponse.created(null, 'Đăng ký tài khoản thành công.')
     );
   } catch (error) {
     res.status(500).json(

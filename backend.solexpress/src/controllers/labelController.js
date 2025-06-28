@@ -1,5 +1,6 @@
 const csv = require('csv-parser');
 const axios = require('axios');
+const stream = require('stream');
 const sqlService = require('../config/db');
 const ApiResponse = require('../utils/response');
 const { LablesResponse } = require('../models/response/labelsResponse');
@@ -18,7 +19,7 @@ function buildBoxItem(line, boxNumber = 1) {
 
 function buildJsonPayload(line, orderItemsStr) {
   const childOrders = JSON.parse(`[${orderItemsStr}]`);
-  return JSON.stringify([{
+  return {
     OrderNumber: line.referenceNo,
     ShippingMethodCode: line.serviceType,
     TrackingNumber: line.referenceNo,
@@ -60,91 +61,193 @@ function buildJsonPayload(line, orderItemsStr) {
       CurrencyCode: "USD",
       InvoiceRemarke: "1221"
     }]
-  }]);
+  };
 }
 //#endregion
 
 const importLabels = async (req, res) => {
-  const results = [];
-  const stream = require('stream');
-
   if (!req.file || req.file.mimetype !== 'text/csv') {
     return res.json(ApiResponse.badRequest('File không đúng. Vui lòng upload file CSV.'));
   }
+
   const userId = req.user.username;
+  const results = [];
+  const errors = [];
+  const successItems = [];
+
   try {
     const bufferStream = new stream.PassThrough();
     bufferStream.end(req.file.buffer);
-    bufferStream
-      .pipe(csv())
-      .on('data', (data) => results.push(data))
-      .on('end', async () => {
-        let countOfCases = 0;
-        let orderItems = '';
-        let currentRef = null;
-        console.log(results);
-        for (const line of results) {
-          if (line['serviceType'] && line['recipientName']) {
-            currentRef = line['referenceNo'];
-            orderItems = buildBoxItem(line);
-          } else if (!line['serviceType'] && !line['recipientName']) {
-            countOfCases++;
-            orderItems += ',' + buildBoxItem(line, countOfCases);
+
+    await new Promise((resolve, reject) => {
+      bufferStream
+        .pipe(csv())
+        .on('data', (data) => results.push(data))
+        .on('end', resolve)
+        .on('error', reject);
+    });
+
+    const requestData = [];
+    const orderMapping = new Map();
+    let currentOrder = null;
+    let currentOrderItems = [];
+    let currentItemCount = 0;
+
+    for (const line of results) {
+      try {
+        if (line.serviceType && line.recipientName) {
+          if (currentOrder && currentOrderItems.length > 0) {
+            const jsonPayload = buildJsonPayload(currentOrder, currentOrderItems);
+            requestData.push(jsonPayload);
+            orderMapping.set(currentOrder.referenceNo, currentOrder);
           }
-          countOfCases++;
-          if (countOfCases == line['itemCount']) {
-            const jsonPayload = buildJsonPayload(line, orderItems);
-            try {
-              const response = await axios.post(
-                'https://omsapi.worldtech.eu/API/order/BatchAdd',
-                jsonPayload,
-                {
-                  headers: {
-                    Authorization: 'Basic ' + Buffer.from('AU0274360&x+nnRWjB14HnKgOZ6xGUbQ==').toString('base64'),
-                    'Content-Type': 'application/json'
-                  }
-                }
-              );
-              if (response && response.data) {
-                const result = response.data.item;
-                console.log(result?.length, result[0])
-                if (result?.length > 0 && result[0]) {
-                  const item = result[0];
-                  await sqlService.query(
-                    'INSERT INTO ksn_label (OrderId, LabelUrl, Datetime, ReferenceNo, State, Postcode, ServiceCode, Status, UserId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [
-                      item.OrderId,
-                      item.LabelUrls[0].LabelUrl,
-                      new Date().toISOString().slice(0, 19).replace('T', ' '),
-                      line.referenceNo,
-                      line.state,
-                      line.postcode,
-                      line.serviceType,
-                      response.data.ResultDesc,
-                      userId
-                    ]
-                  );
-                }
-              } else {
-                res.json(ApiResponse.badRequest('Có lỗi xảy ra'));
-              }
-            } catch (err) {
-              console.error('API Error:', err.message);
-              res.json(ApiResponse.badRequest(err.message));
-            }
-            countOfCases = 0;
-            orderItems = '';
+
+          currentOrder = line;
+          currentOrderItems = [buildBoxItem(line)];
+          currentItemCount = 1;
+        } else if (currentOrder && line.itemCount) {
+          currentItemCount++;
+          currentOrderItems.push(buildBoxItem(line, currentItemCount));
+
+          if (currentItemCount >= Number(line.itemCount)) {
+            const jsonPayload = buildJsonPayload(currentOrder, currentOrderItems);
+            requestData.push(jsonPayload);
+            orderMapping.set(currentOrder.referenceNo, currentOrder);
+
+            currentOrder = null;
+            currentOrderItems = [];
+            currentItemCount = 0;
           }
         }
-        res.json(ApiResponse.success(results, 'Thành công.'));
-      })
-      .on('error', (err) => {
-        console.error('Upload CSV có lỗi xảy ra:', err);
-        res.json(ApiResponse.badRequest('Upload CSV không thành công'));
+      } catch (innerErr) {
+        console.error('Lỗi xử lý từng dòng:', innerErr);
+        errors.push(`Đơn ${line.referenceNo || 'Unknown'}: ${innerErr.message}`);
+      }
+    }
+
+    if (currentOrder && currentOrderItems.length > 0) {
+      const jsonPayload = buildJsonPayload(currentOrder, currentOrderItems);
+      requestData.push(jsonPayload);
+      orderMapping.set(currentOrder.referenceNo, currentOrder);
+    }
+
+    if (requestData.length === 0) {
+      return res.json(ApiResponse.badRequest('Không có dữ liệu hợp lệ để xử lý.'));
+    }
+    const response = await axios.post(
+      'https://omsapi.worldtech.eu/API/order/BatchAdd',
+      JSON.stringify(requestData),
+      {
+        headers: {
+          Authorization: 'Basic ' + Buffer.from('AU0274360&x+nnRWjB14HnKgOZ6xGUbQ==').toString('base64'),
+          'Content-Type': 'application/json',
+        },
+        timeout: 30000,
+      }
+    );
+
+    const resData = response?.data;
+
+    if (resData?.ResultCode === 0 || resData?.ResultDesc === '成功') {
+      const items = resData?.item || [];
+
+      if (items.length > 0) {
+        try {
+          const insertData = items.map(item => {
+            const orderData = orderMapping.get(item.OrderNumber || item.ReferenceNo);
+            return [
+              item.OrderId,
+              item.LabelUrls?.[0]?.LabelUrl || '',
+              new Date().toISOString().slice(0, 19).replace('T', ' '),
+              item.OrderNumber || item.ReferenceNo,
+              orderData?.state || '',
+              orderData?.postcode || '',
+              orderData?.serviceType || '',
+              resData.ResultDesc?.replaceAll('成功', 'Thành công') ?? 'Thành công',
+              userId
+            ];
+          });
+
+          const placeholders = items.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+          const flatValues = insertData.flat();
+
+          await sqlService.query(
+            `INSERT INTO ksn_label 
+              (OrderId, LabelUrl, Datetime, ReferenceNo, State, Postcode, ServiceCode, Status, UserId) 
+              VALUES ${placeholders}`,
+            flatValues
+          );
+
+          items.forEach(item => successItems.push(item.OrderId));
+
+        } catch (dbError) {
+          console.error('Database batch insert error:', dbError);
+
+          console.log('Falling back to individual inserts...');
+          const insertPromises = items.map(async (item) => {
+            try {
+              const orderData = orderMapping.get(item.OrderNumber || item.ReferenceNo);
+              await sqlService.query(
+                `INSERT INTO ksn_label 
+                  (OrderId, LabelUrl, Datetime, ReferenceNo, State, Postcode, ServiceCode, Status, UserId) 
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                  item.OrderId,
+                  item.LabelUrls?.[0]?.LabelUrl || '',
+                  new Date().toISOString().slice(0, 19).replace('T', ' '),
+                  item.OrderNumber || item.ReferenceNo,
+                  orderData?.state || '',
+                  orderData?.postcode || '',
+                  orderData?.serviceType || '',
+                  resData.ResultDesc?.replaceAll('成功', 'Thành công') ?? 'Thành công',
+                  userId
+                ]
+              );
+              successItems.push(item.OrderId);
+            } catch (individualError) {
+              console.error('Individual insert error:', individualError);
+              errors.push(`Lỗi lưu đơn ${item.OrderId}: ${individualError.message}`);
+            }
+          });
+
+          await Promise.all(insertPromises);
+        }
+      }
+    }
+    else if (resData?.ResultCode === 1001 || resData?.ResultDesc === '失败') {
+      const items = resData?.item || [];
+      items.forEach(item => {
+        errors.push(
+          item?.Feedback?.replaceAll('客户单号重复', 'Số đơn hàng của khách hàng được lặp lại') ?? 'Có lỗi xảy ra'
+        );
       });
+    }
+    else {
+      errors.push(`API Error: ${resData?.ResultDesc || 'Có lỗi xảy ra khi gửi yêu cầu'}`);
+    }
+
+    if (errors.length > 0) {
+      return res.json(ApiResponse.badRequest(errors.join('. ')));
+    }
+
+    return res.json(ApiResponse.success({
+      successCount: successItems.length,
+      successItems: successItems,
+      totalProcessed: requestData.length
+    }, 'Import thành công'));
+
   } catch (error) {
-    console.error('Error:', error);
-    return res.json(ApiResponse.badRequest(error));
+    console.error('Lỗi tổng quát:', error);
+
+    if (error.code === 'ECONNABORTED') {
+      return res.json(ApiResponse.badRequest('Yêu cầu timeout. Vui lòng thử lại.'));
+    }
+
+    if (error.response) {
+      return res.json(ApiResponse.badRequest(`API Error: ${error.response.status} - ${error.response.statusText}`));
+    }
+
+    return res.json(ApiResponse.badRequest('Có lỗi xảy ra khi xử lý file'));
   }
 };
 

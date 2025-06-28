@@ -1,10 +1,16 @@
 import { labelsService } from '@/services';
 import moment from 'moment';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Dispatch, useEffect, useMemo, useRef, useState } from 'react';
 import { Col, Form, Pagination, Row, Spinner, Table } from 'react-bootstrap';
 import { Label, LabelsResponse, LabelTableColumns } from '../types';
 
-const LabelTable = () => {
+const LabelTable = ({
+  isImported,
+  setIsImported,
+}: {
+  isImported: boolean;
+  setIsImported: Dispatch<React.SetStateAction<boolean>>;
+}) => {
   const [labels, setLabels] = useState<Label[]>([]);
   const [loading, setLoading] = useState(true);
   const [pageIndex, setPageIndex] = useState(1);
@@ -14,6 +20,19 @@ const LabelTable = () => {
   const searchTimeout = useRef<NodeJS.Timeout | null>(null);
   const [isDesc, setIsDesc] = useState(true);
   const [sortField, setSortField] = useState('Id');
+
+  useEffect(() => {
+    if (isImported) {
+      setSortField('Id');
+      setIsDesc(true);
+      setPageIndex(1);
+      setPageSize(20);
+      setTextSearch('');
+      fetchLabels();
+      setIsImported(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isImported]);
 
   useEffect(() => {
     fetchLabels();
@@ -69,6 +88,7 @@ const LabelTable = () => {
       setSortField(field);
       setIsDesc(true);
     }
+    setPageIndex(1);
   };
 
   const totalPages = useMemo(() => Math.ceil(total / pageSize), [total, pageSize]);

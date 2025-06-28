@@ -1,8 +1,12 @@
 import { labelsService } from '@/services';
-import { useState } from 'react';
+import { Dispatch, useState } from 'react';
 import { Alert, Button, Col, Form, Row } from 'react-bootstrap';
 
-const FileUpload = () => {
+const FileUpload = ({
+  setIsImported,
+}: {
+  setIsImported: Dispatch<React.SetStateAction<boolean>>;
+}) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -34,6 +38,7 @@ const FileUpload = () => {
       const response = await service.importLabels(selectedFile);
       if (response?.data?.success) {
         setMessage({ type: 'success', text: 'Import labels thành công!' });
+        setIsImported(true);
       } else {
         setMessage({
           type: 'success',

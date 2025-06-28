@@ -1,8 +1,11 @@
 import { Col, Container, Row } from 'react-bootstrap';
 import { FileUpload, LabelTable } from './components';
 import './styles.scss';
+import { useState } from 'react';
 
 const Home = () => {
+  const [isImported, setIsImported] = useState(false);
+
   return (
     <Container className="d-flex flex-column gap-3">
       <Row className="justify-content-md-center">
@@ -21,8 +24,8 @@ const Home = () => {
           </ul>
         </Col>
       </Row>
-      <FileUpload />
-      <LabelTable />
+      <FileUpload setIsImported={setIsImported} />
+      <LabelTable isImported={isImported} setIsImported={setIsImported} />
     </Container>
   );
 };

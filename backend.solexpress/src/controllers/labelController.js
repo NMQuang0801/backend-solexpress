@@ -121,11 +121,11 @@ async function handleSuccessResponse(data, line, userId) {
     [
       item.OrderId,
       item.LabelUrls[0].LabelUrl,
-      new Date().toISOString().slice(0, 19).replace('T', ' '),
-      line.referenceNo,
-      line.state,
-      line.postcode,
-      line.serviceType,
+      new Date(),
+      line.referenceNo ?? '',
+      line.state ?? '',
+      line.postcode ?? '',
+      line.serviceType ?? '',
       status,
       userId
     ]

@@ -12,10 +12,17 @@ const labelsService = () => {
         'Content-Type': 'multipart/form-data',
         Authorization: `Bearer ${token}`,
       },
+      timeout: 60000,
     });
   };
 
-  const getLabels = (pageIndex: number = 1, pageSize: number = 20, textSearch: string = '') => {
+  const getLabels = (
+    pageIndex: number = 1,
+    pageSize: number = 20,
+    textSearch: string = '',
+    sortField = 'Id',
+    isDesc = true
+  ) => {
     const token = localStorage.getItem('token');
 
     return axiosInstance.get(`${process.env.REACT_APP_API_URL}/api/labels`, {
@@ -26,6 +33,8 @@ const labelsService = () => {
         pageIndex,
         pageSize,
         textSearch,
+        sortField,
+        isDesc,
       },
     });
   };

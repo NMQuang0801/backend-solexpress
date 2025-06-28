@@ -86,6 +86,16 @@ router.post('/import', verifyToken, labelController.importLabels);
  *         schema:
  *           type: string
  *         description: Text search (default empty)
+ *       - in: query
+ *         name: sortField
+ *         schema:
+ *           type: string
+ *         description: Sort Field (default "Id")
+ *       - in: query
+ *         name: isDesc
+ *         schema:
+ *           type: boolean
+ *         description: IsSortDesc (default true)
  *     responses:
  *       200:
  *         description: List of labels

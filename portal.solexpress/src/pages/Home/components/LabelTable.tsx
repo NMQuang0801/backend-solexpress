@@ -1,7 +1,8 @@
 import { labelsService } from '@/services';
+import moment from 'moment';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Col, Form, Pagination, Row, Spinner, Table } from 'react-bootstrap';
-import { Label, LabelsResponse } from '../types';
+import { Label, LabelsResponse, LabelTableColumns } from '../types';
 
 const LabelTable = () => {
   const [labels, setLabels] = useState<Label[]>([]);
@@ -11,18 +12,25 @@ const LabelTable = () => {
   const [textSearch, setTextSearch] = useState('');
   const [total, setTotal] = useState(0);
   const searchTimeout = useRef<NodeJS.Timeout | null>(null);
+  const [isDesc, setIsDesc] = useState(true);
+  const [sortField, setSortField] = useState('Id');
 
   useEffect(() => {
     fetchLabels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageIndex, pageSize]);
+  }, [pageIndex, pageSize, sortField, isDesc]);
 
-  const fetchLabels = async (search = textSearch, page = pageIndex) => {
+  const fetchLabels = async (
+    search = textSearch,
+    page = pageIndex,
+    field = sortField,
+    desc = isDesc
+  ) => {
     setLoading(true);
 
     try {
       const service = labelsService();
-      const response = await service.getLabels(page, pageSize, search);
+      const response = await service.getLabels(page, pageSize, search, field, desc);
       const data: LabelsResponse = response.data.data;
       setLabels(data.data || []);
       setTotal(data.total || 0);
@@ -52,6 +60,15 @@ const LabelTable = () => {
       setPageIndex(1);
       fetchLabels(value, 1);
     }, 500);
+  };
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setIsDesc((prev) => !prev);
+    } else {
+      setSortField(field);
+      setIsDesc(true);
+    }
   };
 
   const totalPages = useMemo(() => Math.ceil(total / pageSize), [total, pageSize]);
@@ -149,14 +166,21 @@ const LabelTable = () => {
         <Table className="tablet-packet" bordered striped responsive>
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Date</th>
-              <th>ID Label</th>
-              <th>State</th>
-              <th>Post Code</th>
-              <th>Reference Code</th>
-              <th>Status</th>
-              <th>Link</th>
+              {LabelTableColumns.map(({ label, field }) => (
+                <th
+                  key={label}
+                  onClick={() => field && handleSort(field)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  {label}
+                  {sortField === field &&
+                    (!isDesc ? (
+                      <i className="bi bi-arrow-up"></i>
+                    ) : (
+                      <i className="bi bi-arrow-down"></i>
+                    ))}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -170,7 +194,7 @@ const LabelTable = () => {
               labels.map((label) => (
                 <tr key={label.id}>
                   <td>{label.id}</td>
-                  <td>{label.datetime.toString()}</td>
+                  <td>{moment(label.datetime).format('DD/MM/YYYY HH:mm')}</td>
                   <td>{label.orderId}</td>
                   <td>{label.state}</td>
                   <td>{label.postcode}</td>

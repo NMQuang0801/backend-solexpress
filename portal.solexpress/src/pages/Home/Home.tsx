@@ -7,7 +7,7 @@ const Home = () => {
     <Container className="d-flex flex-column gap-3">
       <Row className="justify-content-md-center">
         <Col md="auto">
-          <span className="fs-3 fw-bold text-center">CREATE LABEL AU</span>
+          <span className="fw-bold text-center create-label-title">CREATE LABEL AU</span>
         </Col>
       </Row>
       <Row className="justify-content-md-left">

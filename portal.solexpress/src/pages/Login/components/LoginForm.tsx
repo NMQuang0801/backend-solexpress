@@ -7,6 +7,7 @@ import { Button, Col, Form, Image, InputGroup } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import * as yup from 'yup';
 import TermsModal from './TermsModal';
+import Logo from '@/assets/images/logo/logo.png';
 
 const LoginForm = () => {
   const { Formik } = formik;
@@ -49,15 +50,9 @@ const LoginForm = () => {
     <Col
       sm={12}
       lg={6}
-      className="d-flex flex-column justify-content-center align-items-center bg-light bg-gradient p-5 gap-3"
+      className="d-flex flex-column justify-content-center align-items-center bg-light bg-gradient p-lg-5 p-2 py-5 gap-3"
     >
-      <Image
-        src="https://solexpress.skytrack.top/view/logo1.png"
-        width={'auto'}
-        height={100}
-        rounded
-        className="d-flex d-lg-none"
-      />
+      <Image src={Logo} width={'auto'} height={100} rounded className="d-flex d-lg-none" />
       <div className="fs-6 text-center">Nhập thông tin tài khoản để đăng nhập.</div>
       <Formik
         validationSchema={schema}
@@ -110,7 +105,7 @@ const LoginForm = () => {
                 </Form.Control.Feedback>
               </InputGroup>
             </Form.Group>
-            <Form.Group className="mb-3 position-relative d-flex gap-2">
+            <Form.Group className="mb-3 input-terms position-relative d-flex gap-2">
               <Form.Check
                 required
                 name="terms"
@@ -121,10 +116,12 @@ const LoginForm = () => {
                 id="validationFormTerms"
               ></Form.Check>
               <Form.Check.Label onClick={() => setShowModal(true)}>
-                Tuân thủ Điều Khoản Sử Dụng Dịch Vụ của SOL EXPRESS!
+                Tuân thủ Điều Khoản của SOL EXPRESS!
               </Form.Check.Label>
             </Form.Group>
-            <Button type="submit">Submit form</Button>
+            <div className="d-flex justify-content-center">
+              <Button type="submit">Đăng nhập</Button>
+            </div>
           </Form>
         )}
       </Formik>

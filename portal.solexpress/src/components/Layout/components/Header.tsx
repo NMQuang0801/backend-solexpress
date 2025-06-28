@@ -1,5 +1,7 @@
 import HorizontalLogo from '@/assets/images/logo/horizontal-logo.png';
+import Logo from '@/assets/images/logo/logo.png';
 import React, { Dispatch, useEffect, useMemo, useState } from 'react';
+import { Image } from 'react-bootstrap';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 const BREADCRUMB_MAP = { '/': 'Trang chủ' };
@@ -66,7 +68,14 @@ const Header = ({
     <header className="nav__bar">
       <div className="nav__bar__left">
         <Link to="/" className="navbar__logo__left">
-          <img src={HorizontalLogo} alt="" />
+          <Image
+            src={HorizontalLogo}
+            className="d-none d-sm-block"
+            alt="logo"
+            width={'auto'}
+            height={50}
+          />
+          <Image src={Logo} className="d-block d-sm-none" alt="logo" width={'auto'} height={50} />
         </Link>
         <ul className="breadcrumb d-lg-flex d-none">
           {breadcrumbs.map((item, index) => (

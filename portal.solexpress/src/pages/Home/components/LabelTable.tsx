@@ -137,7 +137,7 @@ const LabelTable = () => {
 
   return (
     <React.Fragment>
-      <Row>
+      <Row className="search-label">
         <Form.Control
           type="text"
           placeholder="Nhập từ khóa hoặc ký tự..."
@@ -199,40 +199,42 @@ const LabelTable = () => {
           </tbody>
         </Table>
       </Row>
-      <Row className="d-flex justify-content-between">
-        <Col xs={2} className="d-flex align-items-center gap-2">
-          Hiện
-          <Form.Select
-            aria-label="Default select example"
-            value={pageSize}
-            onChange={handlePageSizeChange}
-          >
-            <option value={20}>20</option>
-            <option value={40}>40</option>
-            <option value={60}>60</option>
-            <option value={80}>80</option>
-          </Form.Select>
-          dòng
-        </Col>
-        <Col xs={10} className="d-flex justify-content-end">
-          <Pagination>
-            <Pagination.First onClick={() => handlePageChange(1)} disabled={pageIndex === 1} />
-            <Pagination.Prev
-              onClick={() => handlePageChange(pageIndex - 1)}
-              disabled={pageIndex === 1}
-            />
-            {renderPaginationItems()}
-            <Pagination.Next
-              onClick={() => handlePageChange(pageIndex + 1)}
-              disabled={pageIndex === totalPages}
-            />
-            <Pagination.Last
-              onClick={() => handlePageChange(totalPages)}
-              disabled={pageIndex === totalPages}
-            />
-          </Pagination>
-        </Col>
-      </Row>
+      {labels.length > 0 && (
+        <Row className="create-label-pagination d-flex justify-content-between flex-column flex-lg-row gap-1 align-items-center">
+          <Col xs={5} xl={3} className="d-flex align-items-center gap-2">
+            Hiện
+            <Form.Select
+              aria-label="Default select example"
+              value={pageSize}
+              onChange={handlePageSizeChange}
+            >
+              <option value={20}>20</option>
+              <option value={40}>40</option>
+              <option value={60}>60</option>
+              <option value={80}>80</option>
+            </Form.Select>
+            dòng
+          </Col>
+          <Col xs={6} className="d-flex justify-content-center justify-content-lg-end">
+            <Pagination>
+              <Pagination.First onClick={() => handlePageChange(1)} disabled={pageIndex === 1} />
+              <Pagination.Prev
+                onClick={() => handlePageChange(pageIndex - 1)}
+                disabled={pageIndex === 1}
+              />
+              {renderPaginationItems()}
+              <Pagination.Next
+                onClick={() => handlePageChange(pageIndex + 1)}
+                disabled={pageIndex === totalPages}
+              />
+              <Pagination.Last
+                onClick={() => handlePageChange(totalPages)}
+                disabled={pageIndex === totalPages}
+              />
+            </Pagination>
+          </Col>
+        </Row>
+      )}
     </React.Fragment>
   );
 };

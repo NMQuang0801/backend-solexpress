@@ -1,5 +1,6 @@
 import { Button, Col, Image } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
+import Logo from '@/assets/images/logo/logo.png';
 
 const CompanyInfo = () => {
   return (
@@ -7,12 +8,7 @@ const CompanyInfo = () => {
       sm={6}
       className="d-none d-lg-flex flex-column justify-content-center align-items-start bg-secondary bg-gradient text-white p-5 gap-2"
     >
-      <Image
-        src="https://solexpress.skytrack.top/view/logo1.png"
-        width={'auto'}
-        height={100}
-        rounded
-      />
+      <Image src={Logo} width={'auto'} height={100} rounded />
       <div className="d-flex flex-column gap-1 mb-2">
         <div className="fs-2 fw-bold text-uppercase">Đơn vị vận chuyển quốc tế</div>
         <div className="fs-5 fw-semibold text-uppercase">Uy tín - Tận tâm - Giá rẻ</div>

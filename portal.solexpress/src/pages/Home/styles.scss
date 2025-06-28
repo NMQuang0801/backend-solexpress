@@ -1,3 +1,7 @@
+.create-label-title {
+  font-size: 32px;
+}
+
 .create-label-info {
   color: #007bff;
   font-size: 16px;
@@ -33,5 +37,26 @@
 .row {
   .table-responsive {
     padding: 0;
+  }
+}
+
+@media (max-width: 575px) {
+  .create-label-title {
+    font-size: 20px;
+  }
+
+  .create-label-pagination *,
+  .create-label-info,
+  .search-label *,
+  .file-upload * {
+    font-size: 12px;
+  }
+
+  .tablet-packet {
+    font-size: 12px;
+
+    th, td {
+      white-space: nowrap;
+    }
   }
 }

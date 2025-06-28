@@ -64,8 +64,8 @@ const FileUpload = () => {
             CSV IMPORT SAMPLE
           </a>
         </Row>
-        <Row className="d-flex align-items-center justify-content-between w-100 mx-auto">
-          <Col xs={8} className="px-0">
+        <Row className="d-flex align-items-center justify-content-between gap-1 w-100 mx-auto">
+          <Col xs={12} xl={8} className="px-0">
             <Form.Group controlId="formFile">
               <Form.Control
                 type="file"
@@ -75,7 +75,7 @@ const FileUpload = () => {
               />
             </Form.Group>
           </Col>
-          <Col xs={3} className="px-0">
+          <Col xs={12} xl={3} className="px-0">
             <Button
               className="w-100"
               variant="primary"

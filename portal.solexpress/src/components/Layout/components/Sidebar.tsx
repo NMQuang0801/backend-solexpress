@@ -7,6 +7,12 @@ const Sidebar = ({ isActiveSidebarMenuMobile }: { isActiveSidebarMenuMobile: boo
 
   const MENU_ITEMS = [
     { key: 'home', label: 'Trang chủ', path: '/', icon: <i className="bi bi-house-fill"></i> },
+    {
+      key: 'etower',
+      label: 'eTower Labels',
+      path: '/etower',
+      icon: <i className="bi bi-box-seam"></i>,
+    },
   ];
 
   return (

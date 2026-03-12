@@ -1,12 +1,19 @@
-import { labelsService } from '@/services';
 import { Dispatch, useState } from 'react';
 import { Alert, Button, Col, Form, Row } from 'react-bootstrap';
 
+type FileUploadProps = {
+  setIsImported: Dispatch<React.SetStateAction<boolean>>;
+  sampleHref?: string;
+  onImport: (file: File) => Promise<{ data?: { success?: boolean; message?: string } } | unknown>;
+  allowedExtensions?: string[];
+};
+
 const FileUpload = ({
   setIsImported,
-}: {
-  setIsImported: Dispatch<React.SetStateAction<boolean>>;
-}) => {
+  sampleHref,
+  onImport,
+  allowedExtensions = ['.csv'],
+}: FileUploadProps) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -21,12 +28,17 @@ const FileUpload = ({
 
   const handleImport = async () => {
     if (!selectedFile) {
-      setMessage({ type: 'error', text: 'Vui lòng chọn file CSV để import' });
+      setMessage({ type: 'error', text: 'Vui lòng chọn file để import' });
       return;
     }
 
-    if (!selectedFile.name.toLowerCase().endsWith('.csv')) {
-      setMessage({ type: 'error', text: 'Vui lòng chọn file CSV' });
+    const lowerName = selectedFile.name.toLowerCase();
+    const isValidExt = allowedExtensions.some((ext) => lowerName.endsWith(ext));
+    if (!isValidExt) {
+      setMessage({
+        type: 'error',
+        text: `Vui lòng chọn file ${allowedExtensions.join(' hoặc ')}`,
+      });
       return;
     }
 
@@ -34,8 +46,10 @@ const FileUpload = ({
     setMessage(null);
 
     try {
-      const service = labelsService();
-      const response = await service.importLabels(selectedFile);
+      const response = (await onImport(selectedFile)) as {
+        data?: { success?: boolean; message?: string };
+      };
+
       if (response?.data?.success) {
         setMessage({ type: 'success', text: 'Import labels thành công!' });
         setIsImported(true);
@@ -45,6 +59,7 @@ const FileUpload = ({
           text: response?.data?.message || 'Có lỗi xảy ra khi import labels',
         });
       }
+
       setSelectedFile(null);
       const fileInput = document.getElementById('formFile') as HTMLInputElement;
       if (fileInput) {
@@ -65,7 +80,7 @@ const FileUpload = ({
     <Row>
       <Col xxs={12} lg={6} className="file-upload">
         <Row className="w-100 mx-auto">
-          <a href={'/static/label-sample.zip'} download className="btn-import-sample">
+          <a href={sampleHref || '/static/label-sample.zip'} download className="btn-import-sample">
             CSV IMPORT SAMPLE
           </a>
         </Row>
@@ -74,7 +89,7 @@ const FileUpload = ({
             <Form.Group controlId="formFile">
               <Form.Control
                 type="file"
-                accept=".csv"
+                accept={allowedExtensions.join(',')}
                 onChange={handleFileChange}
                 disabled={isLoading}
               />

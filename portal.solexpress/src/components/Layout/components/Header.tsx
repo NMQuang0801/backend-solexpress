@@ -4,7 +4,10 @@ import React, { Dispatch, useEffect, useMemo, useState } from 'react';
 import { Image } from 'react-bootstrap';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
-const BREADCRUMB_MAP = { '/': 'Trang chủ' };
+const BREADCRUMB_MAP = {
+  '/': 'Trang chủ',
+  '/etower': 'eTower Label',
+};
 
 const Header = ({
   isActiveSidebarMenuMobile,

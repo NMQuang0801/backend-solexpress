@@ -1,10 +1,16 @@
-import { Col, Container, Row } from 'react-bootstrap';
-import { FileUpload, LabelTable } from './components';
-import './styles.scss';
+import { FileUpload, LabelTable } from '@/components';
+import { labelsService } from '@/services';
 import { useState } from 'react';
+import { Col, Container, Row } from 'react-bootstrap';
+import './styles.scss';
 
 const Home = () => {
   const [isImported, setIsImported] = useState(false);
+
+  const handleAuImport = (file: File) => {
+    const service = labelsService();
+    return service.importLabels(file);
+  };
 
   return (
     <Container className="d-flex flex-column gap-3">
@@ -24,7 +30,12 @@ const Home = () => {
           </ul>
         </Col>
       </Row>
-      <FileUpload setIsImported={setIsImported} />
+      <FileUpload
+        setIsImported={setIsImported}
+        sampleHref="/static/label-sample.zip"
+        onImport={handleAuImport}
+        allowedExtensions={['.csv']}
+      />
       <LabelTable isImported={isImported} setIsImported={setIsImported} />
     </Container>
   );

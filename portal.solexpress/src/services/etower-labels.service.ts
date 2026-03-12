@@ -1,19 +1,23 @@
 import axiosInstance from './axiosInstance';
 
-const labelsService = () => {
+const etowerLabelsService = () => {
   const importLabels = (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
 
     const token = localStorage.getItem('token');
 
-    return axiosInstance.post(`${process.env.REACT_APP_API_URL}/api/labels/import`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-        Authorization: `Bearer ${token}`,
-      },
-      timeout: 60000,
-    });
+    return axiosInstance.post(
+      `${process.env.REACT_APP_API_URL}/api/etower-labels/import`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${token}`,
+        },
+        timeout: 60000,
+      }
+    );
   };
 
   const getLabels = (
@@ -25,7 +29,7 @@ const labelsService = () => {
   ) => {
     const token = localStorage.getItem('token');
 
-    return axiosInstance.get(`${process.env.REACT_APP_API_URL}/api/labels`, {
+    return axiosInstance.get(`${process.env.REACT_APP_API_URL}/api/etower-labels`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -43,7 +47,7 @@ const labelsService = () => {
     const token = localStorage.getItem('token');
 
     return axiosInstance.post(
-      `${process.env.REACT_APP_API_URL}/api/labels/download-zip`,
+      `${process.env.REACT_APP_API_URL}/api/etower-labels/download-zip`,
       { ids },
       {
         headers: {
@@ -54,11 +58,23 @@ const labelsService = () => {
     );
   };
 
+  const downloadLabel = (id: number) => {
+    const token = localStorage.getItem('token');
+
+    return axiosInstance.get(`${process.env.REACT_APP_API_URL}/api/etower-labels/${id}/download`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      responseType: 'blob',
+    });
+  };
+
   return {
     importLabels,
     getLabels,
+    downloadLabel,
     downloadLabelsZip,
   };
 };
 
-export default labelsService;
+export default etowerLabelsService;

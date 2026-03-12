@@ -1,5 +1,6 @@
 const csv = require('csv-parser');
 const axios = require('axios');
+const JSZip = require('jszip');
 const stream = require('stream');
 const sqlService = require('../config/db');
 const ApiResponse = require('../utils/response');
@@ -263,4 +264,61 @@ const getLabels = async (req, res) => {
   }
 };
 
-module.exports = { importLabels, getLabels };
+const downloadLabelsZip = async (req, res) => {
+  try {
+    const { ids } = req.body || {};
+
+    if (!Array.isArray(ids) || !ids.length) {
+      return res
+        .status(400)
+        .json(ApiResponse.error('Danh sách Id không hợp lệ.'));
+    }
+
+    const [rows] = await sqlService.query(
+      `SELECT * FROM ksn_label WHERE Id IN (${ids.map(() => '?').join(',')})`,
+      ids
+    );
+
+    if (!rows || !rows.length) {
+      return res
+        .status(404)
+        .json(ApiResponse.error('Không tìm thấy label nào tương ứng.'));
+    }
+
+    const zip = new JSZip();
+
+    for (const label of rows) {
+      const labelUrl = label.LabelUrl || label.labelUrl;
+      if (!labelUrl) {
+        continue;
+      }
+
+      try {
+        const response = await axios.get(labelUrl, {
+          responseType: 'arraybuffer',
+        });
+        const fileName = `label-${label.OrderId || label.orderId || label.Id}.pdf`;
+        zip.file(fileName, response.data);
+      } catch (err) {
+        console.error('Error fetching label for zip (au labels):', err.message || err);
+      }
+    }
+
+    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="labels-au.zip"'
+    );
+
+    return res.send(zipBuffer);
+  } catch (err) {
+    console.error('Download labels zip error:', err);
+    return res
+      .status(500)
+      .json(ApiResponse.error('Có lỗi xảy ra khi tải zip label.'));
+  }
+};
+
+module.exports = { importLabels, getLabels, downloadLabelsZip };

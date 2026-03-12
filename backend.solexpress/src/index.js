@@ -7,6 +7,7 @@ const multer = require('multer');
 const swaggerUi = require('swagger-ui-express');
 const userRoutes = require('./routes/userRoute');
 const labelRoutes = require('./routes/labelRoute')
+const etowerLabelRoutes = require('./routes/etowerLabelRoute');
 const { swaggerSpecs } = require('./config/swagger');
 const pool = require('./config/db');
 const app = express();
@@ -24,6 +25,7 @@ app.use('/api/users', userRoutes);
 
 const upload = multer({ storage: multer.memoryStorage() });
 app.use('/api/labels', upload.single('file'), labelRoutes);
+app.use('/api/etower-labels', upload.single('file'), etowerLabelRoutes);
 
 // Swagger documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {

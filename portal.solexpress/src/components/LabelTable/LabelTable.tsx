@@ -1,16 +1,16 @@
-import { labelsService } from '@/services';
+import { labelsService, etowerLabelsService } from '@/services';
 import moment from 'moment';
 import React, { Dispatch, useEffect, useMemo, useRef, useState } from 'react';
 import { Col, Form, Pagination, Row, Spinner, Table } from 'react-bootstrap';
-import { Label, LabelsResponse, LabelTableColumns } from '../types';
+import { Label, LabelsResponse, LabelTableColumns } from '@/pages/Home/types';
 
-const LabelTable = ({
-  isImported,
-  setIsImported,
-}: {
+type LabelTableProps = {
   isImported: boolean;
   setIsImported: Dispatch<React.SetStateAction<boolean>>;
-}) => {
+  variant?: 'default' | 'etower';
+};
+
+const LabelTable = ({ isImported, setIsImported, variant = 'default' }: LabelTableProps) => {
   const [labels, setLabels] = useState<Label[]>([]);
   const [loading, setLoading] = useState(true);
   const [pageIndex, setPageIndex] = useState(1);
@@ -20,6 +20,8 @@ const LabelTable = ({
   const searchTimeout = useRef<NodeJS.Timeout | null>(null);
   const [isDesc, setIsDesc] = useState(true);
   const [sortField, setSortField] = useState('Id');
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [downloadingZip, setDownloadingZip] = useState(false);
 
   useEffect(() => {
     if (isImported) {
@@ -48,11 +50,12 @@ const LabelTable = ({
     setLoading(true);
 
     try {
-      const service = labelsService();
+      const service = variant === 'etower' ? etowerLabelsService() : labelsService();
       const response = await service.getLabels(page, pageSize, search, field, desc);
       const data: LabelsResponse = response.data.data;
       setLabels(data.data || []);
       setTotal(data.total || 0);
+      setSelectedIds([]);
     } catch (err) {
       console.error('Error fetching labels:', err);
     } finally {
@@ -160,6 +163,52 @@ const LabelTable = ({
     return items;
   };
 
+  const isAllSelected = useMemo(
+    () => labels.length > 0 && selectedIds.length === labels.length,
+    [labels, selectedIds]
+  );
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(labels.map((label) => label.id));
+    }
+  };
+
+  const handleDownloadSelected = async () => {
+    if (selectedIds.length === 0) {
+      return;
+    }
+
+    try {
+      setDownloadingZip(true);
+      const service = variant === 'etower' ? etowerLabelsService() : labelsService();
+      const response = await service.downloadLabelsZip(selectedIds);
+
+      const blob = new Blob([response.data], { type: 'application/zip' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const prefix = variant === 'etower' ? 'etower-labels' : 'labels-au';
+      link.download = `${prefix}-${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading labels zip:', error);
+    } finally {
+      setDownloadingZip(false);
+    }
+  };
+
   if (loading) {
     return (
       <Row className="justify-content-center">
@@ -182,10 +231,28 @@ const LabelTable = ({
           onChange={(e) => handleSearch(e.target.value)}
         />
       </Row>
+      <Row className="mb-2">
+        <Col className="d-flex justify-content-end">
+          <button
+            type="button"
+            className="btn btn-sm btn-primary"
+            disabled={selectedIds.length === 0 || downloadingZip}
+            onClick={handleDownloadSelected}
+          >
+            {downloadingZip && (
+              <span className="spinner-border spinner-border-sm me-1" role="status" />
+            )}
+            {downloadingZip ? 'Downloading...' : `Download (${selectedIds.length}) labels`}
+          </button>
+        </Col>
+      </Row>
       <Row>
         <Table className="tablet-packet" bordered striped responsive>
           <thead>
             <tr>
+              <th style={{ width: '40px' }}>
+                <Form.Check type="checkbox" checked={isAllSelected} onChange={toggleSelectAll} />
+              </th>
               {LabelTableColumns.map(({ label, field }) => (
                 <th
                   key={label}
@@ -213,6 +280,13 @@ const LabelTable = ({
             ) : (
               labels.map((label) => (
                 <tr key={label.id}>
+                  <td>
+                    <Form.Check
+                      type="checkbox"
+                      checked={selectedIds.includes(label.id)}
+                      onChange={() => toggleSelect(label.id)}
+                    />
+                  </td>
                   <td>{label.id}</td>
                   <td>{moment(label.datetime).format('DD/MM/YYYY HH:mm')}</td>
                   <td>{label.orderId}</td>
@@ -222,17 +296,15 @@ const LabelTable = ({
                   <td>{label.status}</td>
                   <td>
                     {label.labelUrl ? (
-                      <div className="d-flex gap-2">
-                        <i className="bi bi-download"></i>
-                        <a
-                          className="text-black"
-                          href={label.labelUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          Download label
-                        </a>
-                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                        onClick={() =>
+                          window.open(label.labelUrl as string, '_blank', 'noopener,noreferrer')
+                        }
+                      >
+                        <span>View label</span>
+                      </button>
                     ) : (
                       'N/A'
                     )}

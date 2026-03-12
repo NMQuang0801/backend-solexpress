@@ -1,0 +1,165 @@
+.etw-page {
+  padding-top: 4px;
+
+  .etw-create-label-title {
+    font-size: 32px;
+    background: linear-gradient(90deg, #8d23cd, #ff7eb3);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .etw-subtitle {
+    font-size: 14px;
+    color: #5d4a88;
+  }
+
+  .etw-badge {
+    border-radius: 999px;
+    border: 1px solid #e4d4ff;
+    background-color: #fff;
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+
+  .etw-main-row {
+    align-items: stretch;
+  }
+
+  .etw-card {
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: 0 16px 40px rgba(37, 7, 84, 0.1);
+    padding: 14px 16px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .etw-card--left {
+    background: radial-gradient(circle at top left, #f9f5ff, #ffffff 55%);
+  }
+
+  .etw-card--right {
+    background: radial-gradient(circle at top right, #ffeaf2, #ffffff 55%);
+  }
+
+  .etw-card-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .etw-card-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #27124b;
+  }
+
+  .etw-card-desc {
+    font-size: 13px;
+    color: #7c6a9f;
+  }
+
+  .etw-note-box {
+    border-radius: 12px;
+    border: 1px dashed #c9b4ff;
+    background: rgba(248, 244, 255, 0.9);
+    padding: 8px 10px;
+
+    .etw-note-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      background: transparent;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+
+      i {
+        font-size: 14px;
+        color: #8d23cd;
+      }
+    }
+
+    .etw-note-content {
+      margin: 6px 0 0;
+
+      li {
+        list-style-type: '- ';
+        margin-left: 12px;
+        font-size: 13px;
+        color: #543c8f;
+      }
+    }
+  }
+
+  .etw-note-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #8d23cd;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+
+  .etw-upload-wrapper {
+    margin-top: 4px;
+
+    .file-upload {
+      background: transparent;
+      border: none;
+      padding: 0;
+
+      .btn-import-sample {
+        color: #8d23cd;
+      }
+    }
+  }
+
+  // Table zone
+  .tablet-packet {
+    thead {
+      background: linear-gradient(90deg, #f2e8ff, #ffeaf2);
+
+      th {
+        border-color: #f3d9ff;
+      }
+    }
+
+    tbody tr:hover {
+      background-color: #fdf7ff;
+    }
+  }
+
+  // Override button tone for this page
+  .file-upload .btn-primary {
+    background: linear-gradient(90deg, #8d23cd, #ff7eb3);
+    border-color: transparent;
+    font-weight: 600;
+  }
+}
+
+@media (max-width: 575px) {
+  .etw-page {
+    .etw-create-label-title {
+      font-size: 20px;
+    }
+
+    .etw-subtitle {
+      font-size: 12px;
+    }
+
+    .etw-card {
+      padding: 14px 12px 10px;
+    }
+
+    .file-upload *,
+    .search-label *,
+    .create-label-pagination * {
+      font-size: 12px;
+    }
+  }
+}

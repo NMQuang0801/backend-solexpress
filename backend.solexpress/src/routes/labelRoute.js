@@ -105,5 +105,6 @@ router.post('/import', verifyToken, labelController.importLabels);
  *               $ref: '#/components/schemas/ApiResponse'
  */
 router.get('/', verifyToken, labelController.getLabels);
+router.post('/download-zip', verifyToken, labelController.downloadLabelsZip);
 
 module.exports = router;

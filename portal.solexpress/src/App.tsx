@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import './assets/css/global.scss';
 import Layout from './components/Layout/Layout';
-import { Error, Home, Login } from './pages';
+import { Error, Home, Login, Etower } from './pages';
 
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -27,6 +27,7 @@ const App = () => {
     <Routes>
       <Route path="/" element={<Layout />}>
         <Route path="/" element={<Home />} />
+        <Route path="/etower" element={<Etower />} />
       </Route>
       {!isAuthenticated && <Route path="/login" element={<Login />} />}
       <Route path="*" element={<Error />} />

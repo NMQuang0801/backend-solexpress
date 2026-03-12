@@ -48,6 +48,10 @@ app.get('/', (req, res) => {
   res.send('Welcome to the backend API!');
 });
 
+app.get('/health', (req, res) => {
+  res.send('Welcome to the backend API! v1.0.1');
+});
+
 // API kiểm tra token còn hạn hay không
 app.get('/api/check-token', verifyToken, (req, res) => {
   res.status(200).json({ status: 200, message: 'Token is valid' });

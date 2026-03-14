@@ -215,6 +215,44 @@ const LabelTable = ({ isImported, setIsImported, variant = 'default' }: LabelTab
     }
   };
 
+  const handleExportExcel = async () => {
+    if (selectedIds.length === 0) return;
+
+    const selectedOrderIds = labels
+      .filter((label) => selectedIds.includes(label.id))
+      .map((label) => label.orderId)
+      .filter(Boolean);
+
+    if (!selectedOrderIds.length) {
+      showAlert('error', 'Không tìm thấy Order ID cho các labels đã chọn.');
+      return;
+    }
+
+    showLoading();
+    try {
+      const service = etowerLabelsService();
+      const response = await service.exportExcel(selectedOrderIds);
+
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `etower-orders-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      showAlert('success', 'Export Excel thành công!');
+    } catch (error) {
+      console.error('Error exporting Excel:', error);
+      showAlert('error', getErrorMessages(error, 'Có lỗi xảy ra khi export Excel'));
+    } finally {
+      hideLoading();
+    }
+  };
+
   if (loading) {
     return (
       <Row className="justify-content-center">
@@ -238,7 +276,18 @@ const LabelTable = ({ isImported, setIsImported, variant = 'default' }: LabelTab
         />
       </Row>
       <Row className="mb-2">
-        <Col className="d-flex justify-content-end">
+        <Col className="d-flex justify-content-end gap-2">
+          {variant === 'etower' && (
+            <button
+              type="button"
+              className="btn btn-sm btn-success"
+              disabled={selectedIds.length === 0}
+              onClick={handleExportExcel}
+            >
+              <i className="bi bi-file-earmark-excel me-1" />
+              {`Export Excel (${selectedIds.length})`}
+            </button>
+          )}
           <button
             type="button"
             className="btn btn-sm btn-primary"

@@ -87,6 +87,22 @@ async function printLabels(orderIds) {
   return data;
 }
 
+async function queryOrders(orderIds) {
+  const path = API_ETOWER_CONFIG.queryOrdersPath;
+  const url = `${API_ETOWER_CONFIG.baseUrl}${path}`;
+  const headers = API_ETOWER_CONFIG.buildHeaders('POST', path);
+  const { data } = await axios.post(url, orderIds, { headers });
+  return data;
+}
+
+async function gainLabelSpecs(orderIds) {
+  const path = API_ETOWER_CONFIG.labelSpecsPath;
+  const url = `${API_ETOWER_CONFIG.baseUrl}${path}`;
+  const headers = API_ETOWER_CONFIG.buildHeaders('POST', path);
+  const { data } = await axios.post(url, orderIds, { headers });
+  return data;
+}
+
 function parseExcelWithTemplate(sheet) {
   const rawRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '' });
   if (!rawRows.length || rawRows.length < 3) return null;
@@ -355,9 +371,103 @@ const downloadEtowerLabelsZip = async (req, res) => {
   }
 };
 
+const EXCEL_COLUMNS = [
+  'Tracking No', 'Tracking Barcode', 'Ref No.1', 'Master Ref No.',
+  'Ref No.', 'Past Tracking Number', 'Recipient Name', 'Recipient Company',
+  'Recipient addressline1', 'Recipient addressline2', 'Recipient addressline3',
+  'City/Suburb', 'State', 'Postcode', 'Country', 'Phone', 'Email',
+];
+
+function buildExcelRow(order, label) {
+  return {
+    'Tracking No': order.trackingNo || '',
+    'Tracking Barcode': label.barCode || '',
+    'Ref No.1': '',
+    'Master Ref No.': label.orderId || '',
+    'Ref No.': order.referenceNo || '',
+    'Past Tracking Number': order.trackingNo || '',
+    'Recipient Name': order.recipientName || '',
+    'Recipient Company': order.recipientCompany || '',
+    'Recipient addressline1': order.addressline1 || '',
+    'Recipient addressline2': order.addressline2 || '',
+    'Recipient addressline3': order.addressline3 || '',
+    'City/Suburb': order.city || '',
+    'State': order.state || '',
+    'Postcode': order.postcode || '',
+    'Country': label.recipientCountry || '',
+    'Phone': order.phone || '',
+    'Email': order.email || '',
+  };
+}
+
+function toExcelBuffer(rows) {
+  const wb = xlsx.utils.book_new();
+  const ws = xlsx.utils.json_to_sheet(rows, { header: EXCEL_COLUMNS });
+
+  ws['!cols'] = EXCEL_COLUMNS.map((col) => {
+    const maxLen = Math.max(col.length, ...rows.map((r) => String(r[col] ?? '').length));
+    return { wch: Math.min(maxLen + 2, 40) };
+  });
+
+  xlsx.utils.book_append_sheet(wb, ws, 'eTower Orders');
+  return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+}
+
+async function fetchEtowerData(orderIds) {
+  const chunkSize = 300;
+  const chunks = [];
+  for (let i = 0; i < orderIds.length; i += chunkSize) {
+    chunks.push(orderIds.slice(i, i + chunkSize));
+  }
+
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      Promise.all([queryOrders(chunk), gainLabelSpecs(chunk)])
+    )
+  );
+
+  const orders = results.flatMap(([o]) => o?.data || []);
+  const labels = results.flatMap(([, l]) => l?.data || []);
+  return { orders, labels };
+}
+
+const exportEtowerExcel = async (req, res) => {
+  try {
+    const { orderIds } = req.body || {};
+
+    if (!Array.isArray(orderIds) || !orderIds.length) {
+      return ApiResponse.badRequest(res, 'Danh sách orderIds không hợp lệ.');
+    }
+
+    const { orders, labels } = await fetchEtowerData(orderIds);
+
+    const labelMap = Object.fromEntries(
+      labels.filter((l) => l.orderId).map((l) => [l.orderId, l])
+    );
+
+    const rows = orders
+      .filter((item) => item.status === 'Success' && item.order)
+      .map((item) => buildExcelRow(item.order, labelMap[item.orderId] || {}));
+
+    if (!rows.length) {
+      return ApiResponse.badRequest(res, 'Không có dữ liệu order nào hợp lệ để xuất Excel.');
+    }
+
+    const buffer = toExcelBuffer(rows);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="etower-orders-export.xlsx"');
+    return res.send(buffer);
+  } catch (err) {
+    console.error('Export eTower Excel error:', err);
+    return ApiResponse.serverError(res, 'Có lỗi xảy ra khi xuất Excel.');
+  }
+};
+
 module.exports = {
   importEtowerLabels,
   getEtowerLabels,
   downloadEtowerLabel,
   downloadEtowerLabelsZip,
+  exportEtowerExcel,
 };

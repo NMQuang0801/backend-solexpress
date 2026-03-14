@@ -6,6 +6,8 @@ const API_ETOWER_CONFIG = {
   secret: process.env.ETOWER_SECRET,
   createOrdersPath: "/services/shipper/orders",
   printLabelPath: "/services/shipper/labels",
+  queryOrdersPath: "/services/shipper/queryorders",
+  labelSpecsPath: "/services/shipper/labelSpecs",
   buildHeaders(method, path) {
     const token = this.token || "";
     const secret = this.secret || "";

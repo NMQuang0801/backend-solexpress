@@ -69,11 +69,27 @@ const etowerLabelsService = () => {
     });
   };
 
+  const exportExcel = (orderIds: string[]) => {
+    const token = localStorage.getItem('token');
+
+    return axiosInstance.post(
+      `${process.env.REACT_APP_API_URL}/api/etower-labels/export-excel`,
+      { orderIds },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        responseType: 'blob',
+      }
+    );
+  };
+
   return {
     importLabels,
     getLabels,
     downloadLabel,
     downloadLabelsZip,
+    exportExcel,
   };
 };
 

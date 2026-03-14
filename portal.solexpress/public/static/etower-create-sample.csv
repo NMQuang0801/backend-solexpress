@@ -1,3 +1,0 @@
-referenceNo,country,serviceCode,serviceOption,facility,state,city,postcode,addressLine1,addressLine2,addressLine3,recipientName,phone,email,sku,invoiceCurrency,invoiceValue,weightUnit,weight,description,nativeDescription,shipperName,shipperPhone,shipperAddressLine1,shipperAddressLine2,shipperAddressLine3,shipperCity,shipperState,shipperPostcode,shipperCountry,volume,itemNo,hsCode,originCountry,itemCount,unitValue,warehouseNo,productURL,itemWeight
-123456781,AU,AU.TGE.PRIORITY.PRO,,,VICTORIA,Berwick,3806,17 VARIEGATE RD,,,NGUYEN VAN A,,,,AUD,120,kg,45,MINISKIRT,,SLINT,,,,,,,,,,,,,,,,,
-

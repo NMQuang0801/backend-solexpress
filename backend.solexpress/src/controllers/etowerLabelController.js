@@ -87,9 +87,38 @@ async function printLabels(orderIds) {
   return response.data;
 }
 
+/**
+ * Parse Excel theo template: dòng 1 = tên cột (hiển thị), dòng 2 = key body (mapping), từ dòng 3 = dữ liệu.
+ * Trả về mảng object, mỗi object key theo dòng 2.
+ */
+function parseExcelWithTemplate(sheet) {
+  const rawRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  if (!rawRows.length || rawRows.length < 3) {
+    return null;
+  }
+  const headerKeys = rawRows[1].map((cell) => (cell != null ? String(cell).trim() : ''));
+  const dataRows = rawRows.slice(2);
+  return dataRows
+    .filter((row) => row.some((cell) => cell != null && String(cell).trim() !== ''))
+    .map((row) => {
+      const obj = {};
+      headerKeys.forEach((key, i) => {
+        if (key) obj[key] = row[i] != null ? row[i] : '';
+      });
+      return obj;
+    });
+}
+
+/**
+ * Parse Excel/CSV format cũ: dòng 1 = header (key body), từ dòng 2 = dữ liệu.
+ */
+function parseExcelWithFirstRowHeader(sheet) {
+  return xlsx.utils.sheet_to_json(sheet);
+}
+
 const importEtowerLabels = async (req, res) => {
   if (!req.file) {
-    return res.json(ApiResponse.badRequest('Vui lòng upload file CSV.'));
+    return res.json(ApiResponse.badRequest('Vui lòng upload file CSV hoặc Excel (.xlsx).'));
   }
 
   const userId = req.user.username;
@@ -98,10 +127,17 @@ const importEtowerLabels = async (req, res) => {
     const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
     const firstSheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[firstSheetName];
-    const rows = xlsx.utils.sheet_to_json(sheet);
 
-    if (!rows.length) {
-      return res.json(ApiResponse.badRequest('File không có dữ liệu.'));
+    // Template mới: dòng 1 = tên cột, dòng 2 = mapping body, từ dòng 3 = data
+    let rows = parseExcelWithTemplate(sheet);
+    let dataStartRow = 3;
+    if (!rows || rows.length === 0) {
+      // Fallback: format cũ (dòng 1 = header, từ dòng 2 = data)
+      rows = parseExcelWithFirstRowHeader(sheet);
+      dataStartRow = 2;
+      if (!rows.length) {
+        return res.json(ApiResponse.badRequest('File không có dữ liệu.'));
+      }
     }
 
     const orders = rows.map(mapRowToEtowerOrder);
@@ -132,7 +168,7 @@ const importEtowerLabels = async (req, res) => {
           }
         } else if (item.errors && item.errors.length) {
           const msg = item.errors.map((e) => e.message).join('; ');
-          createErrors.push(`Dòng ${i + index + 2}: ${msg}`);
+          createErrors.push(`Dòng ${i + index + 1}: ${msg}`);
         }
       });
     }
@@ -153,6 +189,7 @@ const importEtowerLabels = async (req, res) => {
     const labelData = labelResult.data || [];
 
     for (const item of labelData) {
+      console.log(item, createdOrderIds);
       if (item.status !== 'Success') {
         continue;
       }
@@ -176,8 +213,15 @@ const importEtowerLabels = async (req, res) => {
       );
     }
 
+    const successCount = createdOrderIds.length;
+    const errorCount = createErrors.length;
+    let message = `Thành công ${successCount} đơn.`;
+    if (errorCount > 0) {
+      message += ` ${errorCount} đơn lỗi (chi tiết trong response).`;
+    }
+
     return res.json(
-      ApiResponse.success({ createdOrderIds, createErrors }, 'Thành công.')
+      ApiResponse.success({ createdOrderIds, createErrors, successCount, errorCount }, message)
     );
   } catch (err) {
     console.error('ETower import error:', err);

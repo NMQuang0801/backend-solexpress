@@ -1,10 +1,23 @@
 import { Dispatch, useState } from 'react';
 import { Alert, Button, Col, Form, Row } from 'react-bootstrap';
 
+type ImportResponse = {
+  data?: {
+    success?: boolean;
+    message?: string;
+    data?: {
+      successCount?: number;
+      errorCount?: number;
+      createdOrderIds?: string[];
+      createErrors?: string[];
+    };
+  };
+};
+
 type FileUploadProps = {
   setIsImported: Dispatch<React.SetStateAction<boolean>>;
   sampleHref?: string;
-  onImport: (file: File) => Promise<{ data?: { success?: boolean; message?: string } } | unknown>;
+  onImport: (file: File) => Promise<ImportResponse | unknown>;
   allowedExtensions?: string[];
 };
 
@@ -46,17 +59,40 @@ const FileUpload = ({
     setMessage(null);
 
     try {
-      const response = (await onImport(selectedFile)) as {
-        data?: { success?: boolean; message?: string };
-      };
+      const response = (await onImport(selectedFile)) as ImportResponse;
+      const d = response?.data;
 
-      if (response?.data?.success) {
-        setMessage({ type: 'success', text: 'Import labels thành công!' });
+      if (d?.success) {
+        const payload = d.data;
+        const isEtowerPayload =
+          payload &&
+          typeof payload === 'object' &&
+          !Array.isArray(payload) &&
+          ('createErrors' in payload || 'createdOrderIds' in payload || 'successCount' in payload);
+
+        let text: string;
+        if (isEtowerPayload) {
+          const successCount = payload.successCount ?? payload.createdOrderIds?.length ?? 0;
+          const errorCount = payload.errorCount ?? payload.createErrors?.length ?? 0;
+          text = `Thành công ${successCount} đơn.`;
+          if (errorCount > 0) {
+            text += ` ${errorCount} đơn lỗi.`;
+            if (payload.createErrors?.length) {
+              text += ` Chi tiết: ${payload.createErrors.join(' ')}`;
+            }
+          } else if (successCount) {
+            text = 'Import labels thành công!';
+          }
+        } else {
+          const count = Array.isArray(payload) ? payload.length : 0;
+          text = count > 0 ? `Thành công ${count} đơn.` : 'Import labels thành công!';
+        }
+        setMessage({ type: 'success', text });
         setIsImported(true);
       } else {
         setMessage({
-          type: 'success',
-          text: response?.data?.message || 'Có lỗi xảy ra khi import labels',
+          type: 'error',
+          text: d?.message || 'Có lỗi xảy ra khi import labels',
         });
       }
 
@@ -81,7 +117,7 @@ const FileUpload = ({
       <Col xxs={12} lg={6} className="file-upload">
         <Row className="w-100 mx-auto">
           <a href={sampleHref || '/static/label-sample.zip'} download className="btn-import-sample">
-            CSV IMPORT SAMPLE
+            IMPORT SAMPLE FILE
           </a>
         </Row>
         <Row className="d-flex align-items-center justify-content-between gap-1 w-100 mx-auto">

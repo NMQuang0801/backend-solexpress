@@ -77,7 +77,7 @@ const Etower = () => {
             <div className="etw-upload-wrapper">
               <FileUpload
                 setIsImported={setIsImported}
-                sampleHref="/static/etower-create-sample.csv"
+                sampleHref="/static/etower-create-sample.xlsx"
                 onImport={handleEtowerImport}
                 allowedExtensions={['.csv', '.xlsx']}
               />

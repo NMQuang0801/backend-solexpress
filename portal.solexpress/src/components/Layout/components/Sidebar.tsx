@@ -7,6 +7,12 @@ const Sidebar = ({ isActiveSidebarMenuMobile }: { isActiveSidebarMenuMobile: boo
 
   const MENU_ITEMS = [
     {
+      key: 'home',
+      label: 'Trang chủ',
+      path: '/',
+      icon: <i className="bi bi-house-door-fill"></i>,
+    },
+    {
       key: 'cirro',
       label: 'Cirro Labels',
       path: '/cirro',
@@ -26,7 +32,7 @@ const Sidebar = ({ isActiveSidebarMenuMobile }: { isActiveSidebarMenuMobile: boo
         {MENU_ITEMS.map((item) => (
           <li
             key={item.key}
-            className={`menu-item ${currentPath === item.path || currentPath.includes(item.key) ? 'active' : ''}`}
+            className={`menu-item ${currentPath === item.path || (item.key !== 'home' && currentPath.includes(item.key)) ? 'active' : ''}`}
           >
             <Link to={item.path}>
               {item.icon}

@@ -5,6 +5,7 @@ import { Image } from 'react-bootstrap';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 const BREADCRUMB_MAP = {
+  '/': 'Trang chủ',
   '/cirro': 'Cirro Labels',
   '/etower': 'eTower Label',
 };
@@ -30,7 +31,7 @@ const Header = ({
   useEffect(() => {
     setIsActiveSidebarMenuMobile(false);
     if (pathNames?.length === 0) {
-      setBreadcrumbs([{ name: BREADCRUMB_MAP['/cirro'], path: '/cirro' }]);
+      setBreadcrumbs([{ name: BREADCRUMB_MAP['/'], path: '/' }]);
       return;
     }
     const dataBreadCrumbs = pathNames.reduce(

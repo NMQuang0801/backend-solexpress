@@ -8,34 +8,30 @@ const { LoginRequest } = require('../models/request/user');
 
 const loginUser = async (req, res) => {
   const { username, password } = new LoginRequest(req.body);
-  try {
-    const [users] = await sqlService.query('SELECT * FROM users WHERE username = ?', [username]);
 
-    if (users.length === 0) {
-      return res.json(
-        ApiResponse.badRequest('Tài khoản hoặc mật khẩu không đúng.')
-      );
+  try {
+    const [users] = await sqlService.query(
+      'SELECT Id, Name, Username, Password, Role, IsActive, IsDeleted FROM users WHERE Username = ? LIMIT 1',
+      [username]
+    );
+
+    if (!users.length) {
+      return ApiResponse.badRequest(res, 'Tài khoản hoặc mật khẩu không đúng.');
     }
 
     const user = users[0];
-    const validPassword = await bcrypt.compare(password, user.Password);
-
-    if (!validPassword) {
-      return res.json(
-        ApiResponse.badRequest('Tài khoản hoặc mật khẩu không đúng.')
-      );
-    }
 
     if (!user.IsActive) {
-      return res.json(
-        ApiResponse.badRequest('Tài khoản đã ngưng hoạt động.')
-      );
+      return ApiResponse.badRequest(res, 'Tài khoản đã ngưng hoạt động.');
     }
 
     if (user.IsDeleted) {
-      return res.json(
-        ApiResponse.badRequest('Tài khoản đã xóa.')
-      );
+      return ApiResponse.badRequest(res, 'Tài khoản đã xóa.');
+    }
+
+    const validPassword = await bcrypt.compare(password, user.Password);
+    if (!validPassword) {
+      return ApiResponse.badRequest(res, 'Tài khoản hoặc mật khẩu không đúng.');
     }
 
     const token = jwt.sign(
@@ -44,13 +40,11 @@ const loginUser = async (req, res) => {
       { expiresIn: '24h' }
     );
 
-    const response = new LoginResponse(token, new User(user));
-
-    res.json(ApiResponse.success(response, 'Đăng nhập thành công.'));
+    const data = new LoginResponse(token, new User(user));
+    return ApiResponse.success(res, data, 'Đăng nhập thành công.');
   } catch (error) {
-    res.status(500).json(
-      ApiResponse.error(error.message)
-    );
+    console.error('Login error:', error);
+    return ApiResponse.serverError(res, error.message);
   }
 };
 
@@ -59,28 +53,26 @@ const registerUser = async (req, res) => {
   const creatorUsername = req.user.username;
 
   try {
-    const [existingUsers] = await sqlService.query('SELECT * FROM users WHERE username = ?', [username]);
+    const [existingUsers] = await sqlService.query(
+      'SELECT Id FROM users WHERE Username = ? LIMIT 1',
+      [username]
+    );
+
     if (existingUsers.length > 0) {
-      return res.status(400).json(
-        ApiResponse.badRequest('Tài khoản đã tồn tại.')
-      );
+      return ApiResponse.badRequest(res, 'Tài khoản đã tồn tại.');
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     await sqlService.query(
-      'INSERT INTO users (name, username, password, role, createdBy, updatedBy) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO users (Name, Username, Password, Role, CreatedBy, UpdatedBy) VALUES (?, ?, ?, ?, ?, ?)',
       [name, username, hashedPassword, role, creatorUsername, creatorUsername]
     );
 
-    res.status(201).json(
-      ApiResponse.created(null, 'Đăng ký tài khoản thành công.')
-    );
+    return ApiResponse.created(res, null, 'Đăng ký tài khoản thành công.');
   } catch (error) {
-    res.status(500).json(
-      ApiResponse.error(error.message)
-    );
+    console.error('Register error:', error);
+    return ApiResponse.serverError(res, error.message);
   }
 };
 

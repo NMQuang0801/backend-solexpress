@@ -3,47 +3,29 @@ const ApiResponse = require('../utils/response');
 
 const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  
-  if (!authHeader) {
-    return res.status(401).json(
-      ApiResponse.unauthorized('Authorization header is required')
-    );
-  }
 
-  if (!authHeader.startsWith('Bearer ')) {
-    return res.status(401).json(
-      ApiResponse.unauthorized('Token must start with Bearer')
-    );
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return ApiResponse.unauthorized(res, 'Token must start with Bearer');
   }
 
   const token = authHeader.split(' ')[1];
   if (!token) {
-    return res.status(401).json(
-      ApiResponse.unauthorized('Token is required')
-    );
+    return ApiResponse.unauthorized(res, 'Token is required');
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
+    req.user = jwt.verify(token, process.env.JWT_SECRET);
     next();
-  } catch (error) {
-    return res.status(401).json(
-      ApiResponse.unauthorized('Invalid token')
-    );
+  } catch {
+    return ApiResponse.unauthorized(res, 'Invalid token');
   }
 };
 
 const isAdmin = (req, res, next) => {
   if (req.user.role !== 'admin') {
-    return res.status(403).json(
-      ApiResponse.forbidden('Require admin role')
-    );
+    return ApiResponse.forbidden(res, 'Require admin role');
   }
   next();
 };
 
-module.exports = {
-  verifyToken,
-  isAdmin
-}; 
+module.exports = { verifyToken, isAdmin };

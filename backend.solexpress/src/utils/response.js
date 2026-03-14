@@ -1,46 +1,46 @@
 class ApiResponse {
-  static success(data = null, message = 'Success') {
-    return {
-      status: 200,
-      message,
-      data,
-      success: true,
-    };
+  constructor(status, { messages = null, errorMessages = null, data = null } = {}) {
+    this.status = status;
+    this.messages = messages;
+    this.errorMessages = errorMessages;
+    this.data = data;
   }
 
-  static error(message = 'Error', errorCode = 'SERVER_ERROR', data = null) {
-    return {
-      status: 200,
-      message,
-      data,
-      success: false,
-      errorCode,
-    };
+  static send(res, httpStatus, { messages = null, errorMessages = null, data = null } = {}) {
+    return res.status(httpStatus).json(new ApiResponse(httpStatus, { messages, errorMessages, data }));
   }
 
-  static created(data = null, message = 'Created successfully') {
-    return this.success(data, message);
+  static success(res, data = null, messages = 'Success') {
+    return this.send(res, 200, { messages, data });
   }
 
-  static badRequest(message = 'Bad request', data = null) {
-    return this.error(message, 'BAD_REQUEST', data);
+  static created(res, data = null, messages = 'Created successfully') {
+    return this.send(res, 201, { messages, data });
   }
 
-  static unauthorized(message = 'Unauthorized', data = null) {
-    return this.error(message, 'UNAUTHORIZED', data);
+  static badRequest(res, errorMessages = 'Bad request', data = null) {
+    return this.send(res, 400, { errorMessages, data });
   }
 
-  static forbidden(message = 'Forbidden', data = null) {
-    return this.error(message, 'FORBIDDEN', data);
+  static unauthorized(res, errorMessages = 'Unauthorized') {
+    return this.send(res, 401, { errorMessages });
   }
 
-  static notFound(message = 'Not found', data = null) {
-    return this.error(message, 'NOT_FOUND', data);
+  static forbidden(res, errorMessages = 'Forbidden') {
+    return this.send(res, 403, { errorMessages });
   }
 
-  static validationError(message = 'Validation error', data = null) {
-    return this.error(message, 'VALIDATION_ERROR', data);
+  static notFound(res, errorMessages = 'Not found') {
+    return this.send(res, 404, { errorMessages });
+  }
+
+  static validationError(res, errorMessages = 'Validation error', data = null) {
+    return this.send(res, 422, { errorMessages, data });
+  }
+
+  static serverError(res, errorMessages = 'Internal Server Error') {
+    return this.send(res, 500, { errorMessages });
   }
 }
 
-module.exports = ApiResponse; 
+module.exports = ApiResponse;

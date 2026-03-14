@@ -8,6 +8,7 @@ router.get('/', verifyToken, etowerLabelController.getEtowerLabels);
 router.get('/:id/download', verifyToken, etowerLabelController.downloadEtowerLabel);
 router.post('/download-zip', verifyToken, etowerLabelController.downloadEtowerLabelsZip);
 router.post('/export-excel', verifyToken, etowerLabelController.exportEtowerExcel);
+router.post('/delete-orders', verifyToken, etowerLabelController.deleteEtowerOrders);
 
 module.exports = router;
 

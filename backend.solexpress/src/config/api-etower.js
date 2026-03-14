@@ -8,6 +8,8 @@ const API_ETOWER_CONFIG = {
   printLabelPath: "/services/shipper/labels",
   queryOrdersPath: "/services/shipper/queryorders",
   labelSpecsPath: "/services/shipper/labelSpecs",
+  /** DELETE /services/shipper/order/{ReferenceNo|OrderID} - Delete Shipping Orders */
+  deleteOrderPath: "/services/shipper/order",
   buildHeaders(method, path) {
     const token = this.token || "";
     const secret = this.secret || "";

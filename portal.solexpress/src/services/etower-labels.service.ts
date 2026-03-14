@@ -92,12 +92,27 @@ const etowerLabelsService = () => {
     );
   };
 
+  const deleteOrders = (orderIds: string[]) => {
+    const token = localStorage.getItem('token');
+
+    return axiosInstance.post(
+      `${process.env.REACT_APP_API_URL}/api/etower-labels/delete-orders`,
+      { orderIds },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+  };
+
   return {
     importLabels,
     getLabels,
     downloadLabel,
     downloadLabelsZip,
     exportExcel,
+    deleteOrders,
   };
 };
 

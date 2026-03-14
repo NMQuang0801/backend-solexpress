@@ -104,6 +104,19 @@ async function gainLabelSpecs(orderIds) {
   return data;
 }
 
+/**
+ * Delete one shipping order on eTower.
+ * DELETE /services/shipper/order/{ReferenceNo|OrderID}
+ * @see https://confluence.walltechsystem.com/display/ETWD/6.+Delete+Shipping+Orders
+ */
+async function deleteOrderOnEtower(referenceNoOrOrderId) {
+  const path = `${API_ETOWER_CONFIG.deleteOrderPath}/${encodeURIComponent(referenceNoOrOrderId)}`;
+  const url = `${API_ETOWER_CONFIG.baseUrl}${path}`;
+  const headers = API_ETOWER_CONFIG.buildHeaders("DELETE", path);
+  const { data } = await axios.delete(url, { headers });
+  return data;
+}
+
 function parseExcelWithTemplate(sheet) {
   const rawRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: "" });
   if (!rawRows.length || rawRows.length < 3) return null;
@@ -334,7 +347,7 @@ const getEtowerLabels = async (req, res) => {
     const querySearch = allConditions.length
       ? `AND ${allConditions.join(" AND ")}`
       : "";
-    const baseWhere = `FROM ksn_label_etower WHERE OrderId <> '' ${querySearch}`;
+    const baseWhere = `FROM ksn_label_etower WHERE OrderId <> '' AND (IsDeleted = 0 OR IsDeleted IS NULL) ${querySearch}`;
 
     const allowedSortFields = [
       "Id",
@@ -580,10 +593,111 @@ const exportEtowerExcel = async (req, res) => {
   }
 };
 
+/** Chạy nhiều promise với giới hạn đồng thời. */
+async function runWithConcurrency(items, concurrency, fn) {
+  const results = [];
+  let index = 0;
+  async function worker() {
+    while (index < items.length) {
+      const i = index++;
+      const item = items[i];
+      try {
+        const value = await fn(item, i);
+        results[i] = { ok: true, value };
+      } catch (err) {
+        results[i] = { ok: false, error: err };
+      }
+    }
+  }
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
+/**
+ * Xóa nhiều shipping order trên eTower (chọn nhiều như download-zip, export-excel).
+ * Gọi DELETE API song song (giới hạn concurrency), sau đó cập nhật ksn_label_etower IsDeleted = 1.
+ */
+const deleteEtowerOrders = async (req, res) => {
+  try {
+    const { orderIds } = req.body || {};
+
+    if (!Array.isArray(orderIds) || !orderIds.length) {
+      return ApiResponse.badRequest(res, "Danh sách orderIds không hợp lệ.");
+    }
+
+    const normalized = orderIds
+      .map((id) => (id != null && String(id).trim() !== "" ? String(id).trim() : null))
+      .filter(Boolean);
+    const emptyCount = orderIds.length - normalized.length;
+    if (emptyCount) {
+      return ApiResponse.badRequest(res, "Danh sách orderIds chứa giá trị trống.");
+    }
+
+    const CONCURRENCY = 8;
+    const results = await runWithConcurrency(normalized, CONCURRENCY, async (refOrId) => {
+      const result = await deleteOrderOnEtower(refOrId);
+      if (result?.status !== "Success") {
+        const msg = result?.errors
+          ? Array.isArray(result.errors)
+            ? result.errors.map((e) => e.message || e).join("; ")
+            : String(result.errors)
+          : "Xóa thất bại.";
+        throw new Error(msg);
+      }
+      return { orderId: result.orderId ?? refOrId, referenceNo: result.referenceNo ?? refOrId };
+    });
+
+    const deleted = [];
+    const errors = [];
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      const refOrId = normalized[i];
+      if (r.ok) {
+        deleted.push(r.value);
+      } else {
+        const msg =
+          r.error?.response?.data?.errors
+            ? Array.isArray(r.error.response.data.errors)
+              ? r.error.response.data.errors.map((e) => e.message || e).join("; ")
+              : String(r.error.response.data.errors)
+            : r.error?.message || "Lỗi gọi API eTower.";
+        errors.push({ orderId: refOrId, message: msg });
+      }
+    }
+
+    const successOrderIds = deleted.map((d) => d.orderId).filter(Boolean);
+    if (successOrderIds.length > 0) {
+      const placeholders = successOrderIds.map(() => "?").join(", ");
+      await sqlService.query(
+        `UPDATE ksn_label_etower SET IsDeleted = 1 WHERE OrderId IN (${placeholders})`,
+        successOrderIds,
+      );
+    }
+
+    const successCount = deleted.length;
+    const errorCount = errors.length;
+    const messages =
+      errorCount === 0
+        ? `Đã xóa ${successCount} đơn.`
+        : `Đã xóa ${successCount} đơn. Lỗi ${errorCount} đơn.`;
+
+    return ApiResponse.send(res, 200, {
+      messages,
+      errorMessages: errorCount > 0 ? errors.map((e) => `${e.orderId}: ${e.message}`) : null,
+      data: { successCount, errorCount, deleted, errors },
+    });
+  } catch (err) {
+    console.error("Delete eTower orders error:", err);
+    return ApiResponse.serverError(res, "Có lỗi xảy ra khi xóa đơn eTower.");
+  }
+};
+
 module.exports = {
   importEtowerLabels,
   getEtowerLabels,
   downloadEtowerLabel,
   downloadEtowerLabelsZip,
   exportEtowerExcel,
+  deleteEtowerOrders,
 };

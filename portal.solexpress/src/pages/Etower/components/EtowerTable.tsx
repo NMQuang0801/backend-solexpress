@@ -182,6 +182,46 @@ const EtowerTable = ({ isImported, setIsImported }: EtowerTableProps) => {
     }
   };
 
+  const handleDeleteSelected = async () => {
+    if (selectedIds.length === 0) return;
+
+    const selectedOrderIds = labels
+      .filter((label) => selectedIds.includes(label.id))
+      .map((label) => label.orderId)
+      .filter(Boolean);
+
+    if (!selectedOrderIds.length) {
+      showAlert('error', 'Không tìm thấy Order ID cho các labels đã chọn.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Bạn có chắc muốn xóa ${selectedOrderIds.length} đơn đã chọn? Đơn đã đóng trên eTower không thể xóa.`
+    );
+    if (!confirmed) return;
+
+    showLoading();
+    try {
+      const service = etowerLabelsService();
+      const response = await service.deleteOrders(selectedOrderIds);
+      const res = response.data?.data;
+      const successCount = res?.successCount ?? 0;
+      const errorCount = res?.errorCount ?? 0;
+      const msg =
+        response.data?.messages ||
+        (errorCount > 0
+          ? `Đã xóa ${successCount} đơn. Lỗi ${errorCount} đơn.`
+          : `Đã xóa ${successCount} đơn.`);
+      showAlert('success', msg);
+      if (successCount > 0) fetchLabels(pageIndex);
+    } catch (error) {
+      console.error('Error deleting orders:', error);
+      showAlert('error', getErrorMessages(error, 'Có lỗi xảy ra khi xóa đơn'));
+    } finally {
+      hideLoading();
+    }
+  };
+
   if (loading) {
     return (
       <Row className="justify-content-center">
@@ -265,6 +305,15 @@ const EtowerTable = ({ isImported, setIsImported }: EtowerTableProps) => {
       </div>
       <Row className="mb-2">
         <Col className="d-flex justify-content-end gap-2">
+          <button
+            type="button"
+            className="btn btn-sm btn-danger"
+            disabled={selectedIds.length === 0}
+            onClick={handleDeleteSelected}
+          >
+            <i className="bi bi-trash me-1" />
+            {`Xóa (${selectedIds.length})`}
+          </button>
           <button
             type="button"
             className="btn btn-sm btn-success"

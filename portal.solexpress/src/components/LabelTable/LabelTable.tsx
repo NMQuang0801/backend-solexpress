@@ -1,4 +1,6 @@
 import { labelsService, etowerLabelsService } from '@/services';
+import { useLoading, useAlert } from '@/contexts';
+import { getErrorMessages } from '@/types/response';
 import moment from 'moment';
 import React, { Dispatch, useEffect, useMemo, useRef, useState } from 'react';
 import { Col, Form, Pagination, Row, Spinner, Table } from 'react-bootstrap';
@@ -21,7 +23,8 @@ const LabelTable = ({ isImported, setIsImported, variant = 'default' }: LabelTab
   const [isDesc, setIsDesc] = useState(true);
   const [sortField, setSortField] = useState('Id');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [downloadingZip, setDownloadingZip] = useState(false);
+  const { showLoading, hideLoading } = useLoading();
+  const { showAlert } = useAlert();
 
   useEffect(() => {
     if (isImported) {
@@ -58,6 +61,7 @@ const LabelTable = ({ isImported, setIsImported, variant = 'default' }: LabelTab
       setSelectedIds([]);
     } catch (err) {
       console.error('Error fetching labels:', err);
+      showAlert('error', getErrorMessages(err, 'Có lỗi xảy ra khi tải danh sách labels'));
     } finally {
       setLoading(false);
     }
@@ -187,8 +191,8 @@ const LabelTable = ({ isImported, setIsImported, variant = 'default' }: LabelTab
       return;
     }
 
+    showLoading();
     try {
-      setDownloadingZip(true);
       const service = variant === 'etower' ? etowerLabelsService() : labelsService();
       const response = await service.downloadLabelsZip(selectedIds);
 
@@ -202,10 +206,12 @@ const LabelTable = ({ isImported, setIsImported, variant = 'default' }: LabelTab
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
+      showAlert('success', 'Download labels thành công!');
     } catch (error) {
       console.error('Error downloading labels zip:', error);
+      showAlert('error', getErrorMessages(error, 'Có lỗi xảy ra khi download labels'));
     } finally {
-      setDownloadingZip(false);
+      hideLoading();
     }
   };
 
@@ -236,13 +242,10 @@ const LabelTable = ({ isImported, setIsImported, variant = 'default' }: LabelTab
           <button
             type="button"
             className="btn btn-sm btn-primary"
-            disabled={selectedIds.length === 0 || downloadingZip}
+            disabled={selectedIds.length === 0}
             onClick={handleDownloadSelected}
           >
-            {downloadingZip && (
-              <span className="spinner-border spinner-border-sm me-1" role="status" />
-            )}
-            {downloadingZip ? 'Downloading...' : `Download (${selectedIds.length}) labels`}
+            {`Download (${selectedIds.length}) labels`}
           </button>
         </Col>
       </Row>

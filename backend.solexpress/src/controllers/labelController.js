@@ -194,7 +194,7 @@ const importLabels = async (req, res) => {
     const { errors } = await processCsvData(results, userId);
 
     if (errors.length > 0) {
-      return ApiResponse.badRequest(res, errors.join('. '));
+      return ApiResponse.badRequest(res, errors);
     }
 
     return ApiResponse.success(res, results, 'Thành công.');

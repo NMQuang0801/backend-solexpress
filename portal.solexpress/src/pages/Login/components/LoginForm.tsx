@@ -1,6 +1,7 @@
 import { authService } from '@/services';
+import { useLoading, useAlert } from '@/contexts';
 import { ILoginResponse } from '@/types/response/userResponse';
-import { AxiosError } from 'axios';
+import { getErrorMessages } from '@/types/response';
 import * as formik from 'formik';
 import { useState } from 'react';
 import { Button, Col, Form, Image, InputGroup } from 'react-bootstrap';
@@ -12,6 +13,8 @@ import Logo from '@/assets/images/logo/logo.png';
 const LoginForm = () => {
   const { Formik } = formik;
   const navigate = useNavigate();
+  const { showLoading, hideLoading } = useLoading();
+  const { showAlert } = useAlert();
 
   const [showModal, setShowModal] = useState(false);
 
@@ -22,27 +25,17 @@ const LoginForm = () => {
   });
 
   const onSubmit = async ({ username, password }: { username: string; password: string }) => {
+    showLoading();
     try {
-      const request = { username, password };
-      authService()
-        .login(request)
-        .then((res) => {
-          if (res.data.success) {
-            const response: ILoginResponse = res.data.data;
-            // Store token and user info in localStorage
-            localStorage.setItem('token', response.token);
-            localStorage.setItem('user', JSON.stringify(response.user));
-            // Redirect to home page
-            navigate('/');
-          } else {
-            alert(res.data.message);
-          }
-        })
-        .catch((err: AxiosError) => {
-          alert(err);
-        });
+      const res = await authService().login({ username, password });
+      const loginData: ILoginResponse = res.data.data;
+      localStorage.setItem('token', loginData.token);
+      localStorage.setItem('user', JSON.stringify(loginData.user));
+      navigate('/');
     } catch (error) {
-      console.error(error);
+      showAlert('error', getErrorMessages(error, 'Đăng nhập thất bại, vui lòng thử lại'));
+    } finally {
+      hideLoading();
     }
   };
 

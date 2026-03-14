@@ -2,8 +2,14 @@ class ApiResponse {
   constructor(status, { messages = null, errorMessages = null, data = null } = {}) {
     this.status = status;
     this.messages = messages;
-    this.errorMessages = errorMessages;
+    this.errorMessages = ApiResponse.normalizeErrors(errorMessages);
     this.data = data;
+  }
+
+  static normalizeErrors(errorMessages) {
+    if (!errorMessages) return null;
+    if (Array.isArray(errorMessages)) return errorMessages;
+    return [errorMessages];
   }
 
   static send(res, httpStatus, { messages = null, errorMessages = null, data = null } = {}) {

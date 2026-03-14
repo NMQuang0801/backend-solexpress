@@ -186,34 +186,39 @@ const importEtowerLabels = async (req, res) => {
             if (sourceOrder) orderMetaById[key] = sourceOrder;
           }
         } else if (item.errors?.length) {
-          createErrors.push(`Dòng ${i + idx + 1}: ${item.errors.map((e) => e.message).join('; ')}`);
+          createErrors.push(`Dòng ${i + idx + 1}: ${item.errors.map((e) => e.message).join(';\n')}`);
         }
       }
     }
 
     if (!createdOrderIds.length) {
-      const message = createErrors.length
-        ? createErrors.join('. ')
-        : 'Không có đơn nào tạo thành công.';
-      return ApiResponse.badRequest(res, message);
+      return ApiResponse.badRequest(
+        res,
+        createErrors.length ? createErrors : ['Không có đơn nào tạo thành công.']
+      );
     }
 
     const labelResult = await printLabels(createdOrderIds);
 
     if (!labelResult?.data) {
-      return ApiResponse.badRequest(res, 'Print Label thất bại.');
+      return ApiResponse.badRequest(res, ['Print Label thất bại.']);
     }
 
     await batchInsertLabels(labelResult.data, orderMetaById, userId);
 
     const successCount = createdOrderIds.length;
     const errorCount = createErrors.length;
-    let message = `Thành công ${successCount} đơn.`;
+    const messages = `Thành công ${successCount} đơn.`;
+
     if (errorCount > 0) {
-      message += ` ${errorCount} đơn lỗi (chi tiết trong response).`;
+      return ApiResponse.send(res, 200, {
+        messages,
+        errorMessages: createErrors,
+        data: { createdOrderIds, successCount, errorCount },
+      });
     }
 
-    return ApiResponse.success(res, { createdOrderIds, createErrors, successCount, errorCount }, message);
+    return ApiResponse.success(res, { createdOrderIds, successCount, errorCount }, messages);
   } catch (err) {
     console.error('ETower import error:', err);
     return ApiResponse.serverError(res, 'Có lỗi xảy ra khi xử lý eTower.');

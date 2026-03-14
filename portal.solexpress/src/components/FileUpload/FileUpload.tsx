@@ -1,23 +1,12 @@
 import { Dispatch, useState } from 'react';
-import { Alert, Button, Col, Form, Row } from 'react-bootstrap';
-
-type ImportResponse = {
-  data?: {
-    success?: boolean;
-    message?: string;
-    data?: {
-      successCount?: number;
-      errorCount?: number;
-      createdOrderIds?: string[];
-      createErrors?: string[];
-    };
-  };
-};
+import { Button, Col, Form, Row } from 'react-bootstrap';
+import { useLoading, useAlert } from '@/contexts';
+import { ApiResponse, getErrorMessages } from '@/types/response';
 
 type FileUploadProps = {
   setIsImported: Dispatch<React.SetStateAction<boolean>>;
   sampleHref?: string;
-  onImport: (file: File) => Promise<ImportResponse | unknown>;
+  onImport: (file: File) => Promise<{ data: ApiResponse }>;
   allowedExtensions?: string[];
 };
 
@@ -28,87 +17,51 @@ const FileUpload = ({
   allowedExtensions = ['.csv'],
 }: FileUploadProps) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const { showLoading, hideLoading } = useLoading();
+  const { showAlert } = useAlert();
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       setSelectedFile(file);
-      setMessage(null);
     }
   };
 
   const handleImport = async () => {
     if (!selectedFile) {
-      setMessage({ type: 'error', text: 'Vui lòng chọn file để import' });
+      showAlert('error', 'Vui lòng chọn file để import');
       return;
     }
 
     const lowerName = selectedFile.name.toLowerCase();
     const isValidExt = allowedExtensions.some((ext) => lowerName.endsWith(ext));
     if (!isValidExt) {
-      setMessage({
-        type: 'error',
-        text: `Vui lòng chọn file ${allowedExtensions.join(' hoặc ')}`,
-      });
+      showAlert('error', `Vui lòng chọn file ${allowedExtensions.join(' hoặc ')}`);
       return;
     }
 
-    setIsLoading(true);
-    setMessage(null);
+    showLoading();
 
     try {
-      const response = (await onImport(selectedFile)) as ImportResponse;
-      const d = response?.data;
+      const { data: res } = await onImport(selectedFile);
 
-      if (d?.success) {
-        const payload = d.data;
-        const isEtowerPayload =
-          payload &&
-          typeof payload === 'object' &&
-          !Array.isArray(payload) &&
-          ('createErrors' in payload || 'createdOrderIds' in payload || 'successCount' in payload);
-
-        let text: string;
-        if (isEtowerPayload) {
-          const successCount = payload.successCount ?? payload.createdOrderIds?.length ?? 0;
-          const errorCount = payload.errorCount ?? payload.createErrors?.length ?? 0;
-          text = `Thành công ${successCount} đơn.`;
-          if (errorCount > 0) {
-            text += ` ${errorCount} đơn lỗi.`;
-            if (payload.createErrors?.length) {
-              text += ` Chi tiết: ${payload.createErrors.join(' ')}`;
-            }
-          } else if (successCount) {
-            text = 'Import labels thành công!';
-          }
-        } else {
-          const count = Array.isArray(payload) ? payload.length : 0;
-          text = count > 0 ? `Thành công ${count} đơn.` : 'Import labels thành công!';
-        }
-        setMessage({ type: 'success', text });
-        setIsImported(true);
-      } else {
-        setMessage({
-          type: 'error',
-          text: d?.message || 'Có lỗi xảy ra khi import labels',
-        });
+      if (res.messages) {
+        showAlert('success', res.messages);
+      }
+      if (res.errorMessages?.length) {
+        showAlert('error', res.errorMessages);
       }
 
+      setIsImported(true);
       setSelectedFile(null);
       const fileInput = document.getElementById('formFile') as HTMLInputElement;
       if (fileInput) {
         fileInput.value = '';
       }
     } catch (error) {
-      console.error('Import error:', error);
-      setMessage({
-        type: 'error',
-        text: 'Có lỗi xảy ra khi import labels',
-      });
+      showAlert('error', getErrorMessages(error, 'Có lỗi xảy ra khi import labels'));
     } finally {
-      setIsLoading(false);
+      hideLoading();
     }
   };
 
@@ -127,7 +80,6 @@ const FileUpload = ({
                 type="file"
                 accept={allowedExtensions.join(',')}
                 onChange={handleFileChange}
-                disabled={isLoading}
               />
             </Form.Group>
           </Col>
@@ -136,21 +88,12 @@ const FileUpload = ({
               className="w-100"
               variant="primary"
               onClick={handleImport}
-              disabled={isLoading || !selectedFile}
+              disabled={!selectedFile}
             >
-              {isLoading ? 'Importing...' : 'Import Labels'}
+              Import Labels
             </Button>
           </Col>
         </Row>
-        {message && (
-          <Row className="mt-2">
-            <Col>
-              <Alert variant={message.type === 'success' ? 'success' : 'danger'}>
-                {message.text}
-              </Alert>
-            </Col>
-          </Row>
-        )}
       </Col>
     </Row>
   );

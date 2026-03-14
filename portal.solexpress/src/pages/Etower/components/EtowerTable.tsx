@@ -5,7 +5,7 @@ import { getErrorMessages } from '@/types/response';
 import { TablePagination } from '@/components';
 import { Label, LabelsResponse } from '@/types/label';
 import moment from 'moment';
-import React, { Dispatch, useEffect, useRef, useState } from 'react';
+import React, { Dispatch, useEffect, useState } from 'react';
 import { Col, Form, Row, Spinner, Table } from 'react-bootstrap';
 import { EtowerTableColumns } from '../types';
 
@@ -19,9 +19,11 @@ const EtowerTable = ({ isImported, setIsImported }: EtowerTableProps) => {
   const [loading, setLoading] = useState(true);
   const [pageIndex, setPageIndex] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [textSearch, setTextSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [referenceNo, setReferenceNo] = useState('');
+  const [trackingNo, setTrackingNo] = useState('');
   const [total, setTotal] = useState(0);
-  const searchTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const { sortField, isDesc, handleSort, resetSort } = useTableSort();
   const { selectedIds, isAllSelected, toggleSelect, toggleSelectAll, clearSelection } =
@@ -34,7 +36,10 @@ const EtowerTable = ({ isImported, setIsImported }: EtowerTableProps) => {
       resetSort();
       setPageIndex(1);
       setPageSize(20);
-      setTextSearch('');
+      setDateFrom('');
+      setDateTo('');
+      setReferenceNo('');
+      setTrackingNo('');
       fetchLabels();
       setIsImported(false);
     }
@@ -46,11 +51,22 @@ const EtowerTable = ({ isImported, setIsImported }: EtowerTableProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageIndex, pageSize, sortField, isDesc]);
 
-  const fetchLabels = async (search = textSearch, page = pageIndex) => {
+  const getFilters = () => ({
+    dateFrom: dateFrom.trim() || undefined,
+    dateTo: dateTo.trim() || undefined,
+    referenceNo: referenceNo.trim() || undefined,
+    trackingNo: trackingNo.trim() || undefined,
+  });
+
+  const fetchLabels = async (
+    page = pageIndex,
+    filters?: { dateFrom?: string; dateTo?: string; referenceNo?: string; trackingNo?: string }
+  ) => {
     setLoading(true);
     try {
       const service = etowerLabelsService();
-      const response = await service.getLabels(page, pageSize, search, sortField, isDesc);
+      const f = filters ?? getFilters();
+      const response = await service.getLabels(page, pageSize, f, sortField, isDesc);
       const data: LabelsResponse = response.data.data;
       setLabels(data.data || []);
       setTotal(data.total || 0);
@@ -63,13 +79,33 @@ const EtowerTable = ({ isImported, setIsImported }: EtowerTableProps) => {
     }
   };
 
-  const handleSearch = (value: string) => {
-    setTextSearch(value);
-    if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    searchTimeout.current = setTimeout(() => {
-      setPageIndex(1);
-      fetchLabels(value, 1);
-    }, 500);
+  const applyFilters = () => {
+    setPageIndex(1);
+    fetchLabels(1);
+  };
+
+  const resetFilters = () => {
+    resetSort();
+    setPageIndex(1);
+    setPageSize(20);
+    setDateFrom('');
+    setDateTo('');
+    setReferenceNo('');
+    setTrackingNo('');
+    fetchLabels(1, {
+      dateFrom: undefined,
+      dateTo: undefined,
+      referenceNo: undefined,
+      trackingNo: undefined,
+    });
+  };
+
+  const handleReferenceNoChange = (value: string) => {
+    setReferenceNo(value);
+  };
+
+  const handleTrackingNoChange = (value: string) => {
+    setTrackingNo(value);
   };
 
   const handlePageChange = (page: number) => setPageIndex(page);
@@ -160,14 +196,73 @@ const EtowerTable = ({ isImported, setIsImported }: EtowerTableProps) => {
 
   return (
     <React.Fragment>
-      <Row className="search-label">
-        <Form.Control
-          type="text"
-          placeholder="Nhập từ khóa hoặc ký tự..."
-          value={textSearch}
-          onChange={(e) => handleSearch(e.target.value)}
-        />
-      </Row>
+      <div className="etw-filters">
+        <Row className="search-label g-2">
+          <Col xs={12} sm={6}>
+            <Form.Group>
+              <Form.Label className="small mb-1">Reference No</Form.Label>
+              <Form.Control
+                type="text"
+                placeholder="Tìm reference..."
+                value={referenceNo}
+                onChange={(e) => handleReferenceNoChange(e.target.value)}
+              />
+            </Form.Group>
+          </Col>
+          <Col xs={12} sm={6}>
+            <Form.Group>
+              <Form.Label className="small mb-1">Tracking No</Form.Label>
+              <Form.Control
+                type="text"
+                placeholder="Tìm tracking..."
+                value={trackingNo}
+                onChange={(e) => handleTrackingNoChange(e.target.value)}
+              />
+            </Form.Group>
+          </Col>
+        </Row>
+        <Row className="search-label g-2">
+          <Col xs={12} sm={4} md={3}>
+            <Form.Group>
+              <Form.Label className="small mb-1">Từ ngày</Form.Label>
+              <Form.Control
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+            </Form.Group>
+          </Col>
+          <Col xs={12} sm={4} md={3}>
+            <Form.Group>
+              <Form.Label className="small mb-1">Đến ngày</Form.Label>
+              <Form.Control
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </Form.Group>
+          </Col>
+          <Col
+            xs={12}
+            sm={4}
+            md={6}
+            className="d-flex align-items-end justify-content-sm-end mt-2 mt-sm-0"
+          >
+            <div className="d-flex justify-content-start gap-2 w-100 etw-filter-actions">
+              <button type="button" className="btn btn-primary btn-sm" onClick={applyFilters}>
+                Tìm kiếm
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline-secondary btn-sm"
+                onClick={resetFilters}
+              >
+                Reset
+              </button>
+            </div>
+          </Col>
+        </Row>
+      </div>
       <Row className="mb-2">
         <Col className="d-flex justify-content-end gap-2">
           <button

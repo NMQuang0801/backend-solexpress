@@ -1,11 +1,12 @@
-const axios = require('axios');
-const xlsx = require('xlsx');
-const JSZip = require('jszip');
-const sqlService = require('../config/db');
-const ApiResponse = require('../utils/response');
-const { API_ETOWER_CONFIG } = require('../config/api-etower');
-const { GetLabelsRequest } = require('../models/request/labelsRequest');
-const { LablesResponse } = require('../models/response/labelsResponse');
+const axios = require("axios");
+const xlsx = require("xlsx");
+const JSZip = require("jszip");
+const sqlService = require("../config/db");
+const ApiResponse = require("../utils/response");
+const { API_ETOWER_CONFIG } = require("../config/api-etower");
+const { GetLabelsRequest } = require("../models/request/labelsRequest");
+const { LablesResponse } = require("../models/response/labelsResponse");
+const { LABEL_MESSAGES } = require("../config/api-labels");
 
 function mapRowToEtowerOrder(row) {
   return {
@@ -26,7 +27,7 @@ function mapRowToEtowerOrder(row) {
     sku: row.sku,
     invoiceCurrency: row.invoiceCurrency,
     invoiceValue: row.invoiceValue ? Number(row.invoiceValue) : undefined,
-    weightUnit: row.weightUnit || 'KG',
+    weightUnit: row.weightUnit || "KG",
     weight: row.weight ? Number(row.weight) : undefined,
     description: row.description,
     nativeDescription: row.nativeDescription,
@@ -52,8 +53,8 @@ function mapRowToEtowerOrder(row) {
         unitValue: row.unitValue
           ? Number(row.unitValue)
           : row.invoiceValue
-          ? Number(row.invoiceValue)
-          : undefined,
+            ? Number(row.invoiceValue)
+            : undefined,
         warehouseNo: row.warehouseNo,
         productURL: row.productURL,
         weight: row.itemWeight ? Number(row.itemWeight) : undefined,
@@ -65,7 +66,7 @@ function mapRowToEtowerOrder(row) {
 async function createShippingOrders(orders) {
   const path = API_ETOWER_CONFIG.createOrdersPath;
   const url = `${API_ETOWER_CONFIG.baseUrl}${path}`;
-  const headers = API_ETOWER_CONFIG.buildHeaders('POST', path);
+  const headers = API_ETOWER_CONFIG.buildHeaders("POST", path);
   const { data } = await axios.post(url, orders, { headers });
   return data;
 }
@@ -82,7 +83,7 @@ async function printLabels(orderIds) {
     labelFormat: null,
     dpi: null,
   };
-  const headers = API_ETOWER_CONFIG.buildHeaders('POST', path);
+  const headers = API_ETOWER_CONFIG.buildHeaders("POST", path);
   const { data } = await axios.post(url, body, { headers });
   return data;
 }
@@ -90,7 +91,7 @@ async function printLabels(orderIds) {
 async function queryOrders(orderIds) {
   const path = API_ETOWER_CONFIG.queryOrdersPath;
   const url = `${API_ETOWER_CONFIG.baseUrl}${path}`;
-  const headers = API_ETOWER_CONFIG.buildHeaders('POST', path);
+  const headers = API_ETOWER_CONFIG.buildHeaders("POST", path);
   const { data } = await axios.post(url, orderIds, { headers });
   return data;
 }
@@ -98,23 +99,27 @@ async function queryOrders(orderIds) {
 async function gainLabelSpecs(orderIds) {
   const path = API_ETOWER_CONFIG.labelSpecsPath;
   const url = `${API_ETOWER_CONFIG.baseUrl}${path}`;
-  const headers = API_ETOWER_CONFIG.buildHeaders('POST', path);
+  const headers = API_ETOWER_CONFIG.buildHeaders("POST", path);
   const { data } = await axios.post(url, orderIds, { headers });
   return data;
 }
 
 function parseExcelWithTemplate(sheet) {
-  const rawRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  const rawRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: "" });
   if (!rawRows.length || rawRows.length < 3) return null;
 
-  const headerKeys = rawRows[1].map((cell) => (cell != null ? String(cell).trim() : ''));
+  const headerKeys = rawRows[1].map((cell) =>
+    cell != null ? String(cell).trim() : "",
+  );
   const dataRows = rawRows.slice(2);
   return dataRows
-    .filter((row) => row.some((cell) => cell != null && String(cell).trim() !== ''))
+    .filter((row) =>
+      row.some((cell) => cell != null && String(cell).trim() !== ""),
+    )
     .map((row) => {
       const obj = {};
       headerKeys.forEach((key, i) => {
-        if (key) obj[key] = row[i] != null ? row[i] : '';
+        if (key) obj[key] = row[i] != null ? row[i] : "";
       });
       return obj;
     });
@@ -128,51 +133,60 @@ async function batchInsertLabels(labelData, orderMetaById, userId) {
   const insertRows = [];
 
   for (const item of labelData) {
-    if (item.status !== 'Success') continue;
+    if (item.status !== "Success") continue;
 
     const key = item.orderId || item.trackingNo;
     const meta = key ? orderMetaById[key] || {} : {};
 
     insertRows.push([
-      item.orderId || '',
-      item.labelUrl || '',
+      item.orderId || "",
+      item.labelUrl || "",
       new Date(),
-      meta.referenceNo || item.referenceNo || '',
-      meta.state || '',
-      meta.postcode || '',
-      meta.serviceCode || '',
-      item.status,
+      meta.referenceNo || item.referenceNo || "",
+      item.trackingNo || "",
+      meta.state || "",
+      meta.postcode || "",
+      meta.serviceCode || "",
+      item.status
+        ?.replaceAll(LABEL_MESSAGES.SUCCESS_CN, LABEL_MESSAGES.SUCCESS_VI)
+        ?.replaceAll(LABEL_MESSAGES.SUCCESS_EN, LABEL_MESSAGES.SUCCESS_VI) ??
+        LABEL_MESSAGES.SUCCESS_VI,
       userId,
     ]);
   }
 
   if (!insertRows.length) return;
 
-  const placeholders = insertRows.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+  const placeholders = insertRows
+    .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .join(", ");
   const flatValues = insertRows.flat();
 
   await sqlService.query(
-    `INSERT INTO ksn_label_etower (OrderId, LabelUrl, Datetime, ReferenceNo, State, Postcode, ServiceCode, Status, UserId) VALUES ${placeholders}`,
-    flatValues
+    `INSERT INTO ksn_label_etower (OrderId, LabelUrl, Datetime, ReferenceNo, TrackingNo, State, Postcode, ServiceCode, Status, UserId) VALUES ${placeholders}`,
+    flatValues,
   );
 }
 
 const importEtowerLabels = async (req, res) => {
   if (!req.file) {
-    return ApiResponse.badRequest(res, 'Vui lòng upload file CSV hoặc Excel (.xlsx).');
+    return ApiResponse.badRequest(
+      res,
+      "Vui lòng upload file CSV hoặc Excel (.xlsx).",
+    );
   }
 
   const userId = req.user.username;
 
   try {
-    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+    const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
     let rows = parseExcelWithTemplate(sheet);
     if (!rows || !rows.length) {
       rows = parseExcelWithFirstRowHeader(sheet);
       if (!rows.length) {
-        return ApiResponse.badRequest(res, 'File không có dữ liệu.');
+        return ApiResponse.badRequest(res, "File không có dữ liệu.");
       }
     }
 
@@ -187,7 +201,7 @@ const importEtowerLabels = async (req, res) => {
       const createResult = await createShippingOrders(chunk);
 
       if (!createResult?.data) {
-        createErrors.push('Create Shipping Orders thất bại.');
+        createErrors.push("Create Shipping Orders thất bại.");
         continue;
       }
 
@@ -195,14 +209,16 @@ const importEtowerLabels = async (req, res) => {
         const item = createResult.data[idx];
         const sourceOrder = chunk[idx];
 
-        if (item.status === 'Success') {
+        if (item.status === "Success") {
           const key = item.orderId || item.trackingNo;
           if (key) {
             createdOrderIds.push(key);
             if (sourceOrder) orderMetaById[key] = sourceOrder;
           }
         } else if (item.errors?.length) {
-          createErrors.push(`Dòng ${i + idx + 1}: ${item.errors.map((e) => e.message).join(';\n')}`);
+          createErrors.push(
+            `Dòng ${i + idx + 1}: ${item.errors.map((e) => e.message).join(";\n")}`,
+          );
         }
       }
     }
@@ -210,14 +226,16 @@ const importEtowerLabels = async (req, res) => {
     if (!createdOrderIds.length) {
       return ApiResponse.badRequest(
         res,
-        createErrors.length ? createErrors : ['Không có đơn nào tạo thành công.']
+        createErrors.length
+          ? createErrors
+          : ["Không có đơn nào tạo thành công."],
       );
     }
 
     const labelResult = await printLabels(createdOrderIds);
 
     if (!labelResult?.data) {
-      return ApiResponse.badRequest(res, ['Print Label thất bại.']);
+      return ApiResponse.badRequest(res, ["Print Label thất bại."]);
     }
 
     await batchInsertLabels(labelResult.data, orderMetaById, userId);
@@ -234,40 +252,105 @@ const importEtowerLabels = async (req, res) => {
       });
     }
 
-    return ApiResponse.success(res, { createdOrderIds, successCount, errorCount }, messages);
+    return ApiResponse.success(
+      res,
+      { createdOrderIds, successCount, errorCount },
+      messages,
+    );
   } catch (err) {
-    console.error('ETower import error:', err);
-    return ApiResponse.serverError(res, 'Có lỗi xảy ra khi xử lý eTower.');
+    console.error("ETower import error:", err);
+    return ApiResponse.serverError(res, "Có lỗi xảy ra khi xử lý eTower.");
   }
 };
 
 const getEtowerLabels = async (req, res) => {
   try {
-    const { textSearch, pageIndex, pageSize, sortField, isDesc } = new GetLabelsRequest(req.query);
+    const {
+      dateFrom,
+      dateTo,
+      referenceNo,
+      trackingNo,
+      pageIndex,
+      pageSize,
+      sortField,
+      isDesc,
+    } = new GetLabelsRequest(req.query);
 
     if (!pageIndex || pageIndex < 1) {
-      return ApiResponse.validationError(res, 'PageIndex không đúng.');
+      return ApiResponse.validationError(res, "PageIndex không đúng.");
     }
 
     if (!pageSize || pageSize < 1) {
-      return ApiResponse.validationError(res, 'PageSize không đúng.');
+      return ApiResponse.validationError(res, "PageSize không đúng.");
     }
 
     const searchParams = [];
-    let querySearch = '';
+    const dateConditions = [];
+    const refOrTrackingParts = [];
+    const refOrTrackingParams = [];
 
-    if (textSearch && textSearch.trim() !== '') {
-      const escaped = textSearch.trim().replace(/%/g, '\\%').replace(/_/g, '\\_');
-      const like = `%${escaped}%`;
-      querySearch = 'AND (OrderId LIKE ? OR ReferenceNo LIKE ? OR State LIKE ? OR Postcode LIKE ?)';
-      searchParams.push(like, like, like, like);
+    if (dateFrom && dateFrom.trim() !== "") {
+      dateConditions.push("Datetime >= ?");
+      searchParams.push(`${dateFrom.trim()} 00:00:00`);
+    }
+    if (dateTo && dateTo.trim() !== "") {
+      dateConditions.push("Datetime <= ?");
+      searchParams.push(`${dateTo.trim()} 23:59:59`);
     }
 
+    const hasRef = referenceNo && referenceNo.trim() !== "";
+    const hasTracking = trackingNo && trackingNo.trim() !== "";
+    if (hasRef || hasTracking) {
+      if (hasRef && hasTracking) {
+        const escapedRef = referenceNo
+          .trim()
+          .replace(/%/g, "\\%")
+          .replace(/_/g, "\\_");
+        const escapedTrack = trackingNo
+          .trim()
+          .replace(/%/g, "\\%")
+          .replace(/_/g, "\\_");
+        refOrTrackingParts.push("(ReferenceNo LIKE ? OR TrackingNo LIKE ?)");
+        refOrTrackingParams.push(`%${escapedRef}%`, `%${escapedTrack}%`);
+      } else if (hasRef) {
+        const escaped = referenceNo
+          .trim()
+          .replace(/%/g, "\\%")
+          .replace(/_/g, "\\_");
+        refOrTrackingParts.push("ReferenceNo LIKE ?");
+        refOrTrackingParams.push(`%${escaped}%`);
+      } else {
+        const escaped = trackingNo
+          .trim()
+          .replace(/%/g, "\\%")
+          .replace(/_/g, "\\_");
+        refOrTrackingParts.push("TrackingNo LIKE ?");
+        refOrTrackingParams.push(`%${escaped}%`);
+      }
+      searchParams.push(...refOrTrackingParams);
+    }
+
+    const allConditions = [...dateConditions, ...refOrTrackingParts];
+    const querySearch = allConditions.length
+      ? `AND ${allConditions.join(" AND ")}`
+      : "";
     const baseWhere = `FROM ksn_label_etower WHERE OrderId <> '' ${querySearch}`;
 
-    const allowedSortFields = ['Id', 'OrderId', 'ReferenceNo', 'Datetime', 'State', 'Postcode', 'ServiceCode', 'Status'];
-    const safeSortField = allowedSortFields.includes(sortField) ? sortField : 'Id';
-    const direction = isDesc ? 'DESC' : 'ASC';
+    const allowedSortFields = [
+      "Id",
+      "OrderId",
+      "ReferenceNo",
+      "TrackingNo",
+      "Datetime",
+      "State",
+      "Postcode",
+      "ServiceCode",
+      "Status",
+    ];
+    const safeSortField = allowedSortFields.includes(sortField)
+      ? sortField
+      : "Id";
+    const direction = isDesc ? "DESC" : "ASC";
 
     const limit = parseInt(pageSize);
     const offset = (parseInt(pageIndex) - 1) * limit;
@@ -276,16 +359,19 @@ const getEtowerLabels = async (req, res) => {
       sqlService.query(`SELECT COUNT(*) AS total ${baseWhere}`, searchParams),
       sqlService.query(
         `SELECT * ${baseWhere} ORDER BY ${safeSortField} ${direction} LIMIT ? OFFSET ?`,
-        [...searchParams, limit, offset]
+        [...searchParams, limit, offset],
       ),
     ]);
 
     const total = countRows[0][0]?.total || 0;
     const data = dataRows[0];
 
-    return ApiResponse.success(res, new LablesResponse(total, data, limit, parseInt(pageIndex)));
+    return ApiResponse.success(
+      res,
+      new LablesResponse(total, data, limit, parseInt(pageIndex)),
+    );
   } catch (err) {
-    console.error('Get eTower labels error:', err);
+    console.error("Get eTower labels error:", err);
     return ApiResponse.serverError(res);
   }
 };
@@ -295,30 +381,30 @@ const downloadEtowerLabel = async (req, res) => {
     const { id } = req.params;
 
     const [rows] = await sqlService.query(
-      'SELECT Id, OrderId, LabelUrl FROM ksn_label_etower WHERE Id = ? LIMIT 1',
-      [id]
+      "SELECT Id, OrderId, LabelUrl FROM ksn_label_etower WHERE Id = ? LIMIT 1",
+      [id],
     );
 
     if (!rows?.length) {
-      return ApiResponse.notFound(res, 'Không tìm thấy label.');
+      return ApiResponse.notFound(res, "Không tìm thấy label.");
     }
 
     const label = rows[0];
     const labelUrl = label.LabelUrl || label.labelUrl;
 
     if (!labelUrl) {
-      return ApiResponse.badRequest(res, 'Label không có URL.');
+      return ApiResponse.badRequest(res, "Label không có URL.");
     }
 
-    const response = await axios.get(labelUrl, { responseType: 'arraybuffer' });
+    const response = await axios.get(labelUrl, { responseType: "arraybuffer" });
     const fileName = `label-${label.OrderId || label.orderId || id}.pdf`;
 
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
     return res.send(Buffer.from(response.data));
   } catch (err) {
-    console.error('Download eTower label error:', err);
-    return ApiResponse.serverError(res, 'Có lỗi xảy ra khi tải label.');
+    console.error("Download eTower label error:", err);
+    return ApiResponse.serverError(res, "Có lỗi xảy ra khi tải label.");
   }
 };
 
@@ -327,16 +413,16 @@ const downloadEtowerLabelsZip = async (req, res) => {
     const { ids } = req.body || {};
 
     if (!Array.isArray(ids) || !ids.length) {
-      return ApiResponse.badRequest(res, 'Danh sách Id không hợp lệ.');
+      return ApiResponse.badRequest(res, "Danh sách Id không hợp lệ.");
     }
 
     const [rows] = await sqlService.query(
-      `SELECT Id, OrderId, LabelUrl FROM ksn_label_etower WHERE Id IN (${ids.map(() => '?').join(',')})`,
-      ids
+      `SELECT Id, OrderId, LabelUrl FROM ksn_label_etower WHERE Id IN (${ids.map(() => "?").join(",")})`,
+      ids,
     );
 
     if (!rows?.length) {
-      return ApiResponse.notFound(res, 'Không tìm thấy label nào tương ứng.');
+      return ApiResponse.notFound(res, "Không tìm thấy label nào tương ứng.");
     }
 
     const zip = new JSZip();
@@ -346,57 +432,75 @@ const downloadEtowerLabelsZip = async (req, res) => {
         .filter((label) => label.LabelUrl || label.labelUrl)
         .map(async (label) => {
           const url = label.LabelUrl || label.labelUrl;
-          const response = await axios.get(url, { responseType: 'arraybuffer' });
+          const response = await axios.get(url, {
+            responseType: "arraybuffer",
+          });
           return {
             fileName: `label-${label.OrderId || label.orderId || label.Id}.pdf`,
             data: response.data,
           };
-        })
+        }),
     );
 
     for (const result of fetchResults) {
-      if (result.status === 'fulfilled') {
+      if (result.status === "fulfilled") {
         zip.file(result.value.fileName, result.value.data);
       }
     }
 
-    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+    const zipBuffer = await zip.generateAsync({ type: "nodebuffer" });
 
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', 'attachment; filename="etower-labels.zip"');
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="etower-labels.zip"',
+    );
     return res.send(zipBuffer);
   } catch (err) {
-    console.error('Download eTower labels zip error:', err);
-    return ApiResponse.serverError(res, 'Có lỗi xảy ra khi tải zip label.');
+    console.error("Download eTower labels zip error:", err);
+    return ApiResponse.serverError(res, "Có lỗi xảy ra khi tải zip label.");
   }
 };
 
 const EXCEL_COLUMNS = [
-  'Tracking No', 'Tracking Barcode', 'Ref No.1', 'Master Ref No.',
-  'Ref No.', 'Past Tracking Number', 'Recipient Name', 'Recipient Company',
-  'Recipient addressline1', 'Recipient addressline2', 'Recipient addressline3',
-  'City/Suburb', 'State', 'Postcode', 'Country', 'Phone', 'Email',
+  "Tracking No",
+  "Tracking Barcode",
+  "Ref No.1",
+  "Master Ref No.",
+  "Ref No.",
+  "Past Tracking Number",
+  "Recipient Name",
+  "Recipient Company",
+  "Recipient addressline1",
+  "Recipient addressline2",
+  "Recipient addressline3",
+  "City/Suburb",
+  "State",
+  "Postcode",
+  "Country",
+  "Phone",
+  "Email",
 ];
 
 function buildExcelRow(order, label) {
   return {
-    'Tracking No': order.trackingNo || '',
-    'Tracking Barcode': label.barCode || '',
-    'Ref No.1': '',
-    'Master Ref No.': label.orderId || '',
-    'Ref No.': order.referenceNo || '',
-    'Past Tracking Number': order.trackingNo || '',
-    'Recipient Name': order.recipientName || '',
-    'Recipient Company': order.recipientCompany || '',
-    'Recipient addressline1': order.addressline1 || '',
-    'Recipient addressline2': order.addressline2 || '',
-    'Recipient addressline3': order.addressline3 || '',
-    'City/Suburb': order.city || '',
-    'State': order.state || '',
-    'Postcode': order.postcode || '',
-    'Country': label.recipientCountry || '',
-    'Phone': order.phone || '',
-    'Email': order.email || '',
+    "Tracking No": order.trackingNo || "",
+    "Tracking Barcode": label.barCode || "",
+    "Ref No.1": "",
+    "Master Ref No.": label.orderId || "",
+    "Ref No.": order.referenceNo || "",
+    "Past Tracking Number": order.trackingNo || "",
+    "Recipient Name": order.recipientName || "",
+    "Recipient Company": order.recipientCompany || "",
+    "Recipient addressline1": order.addressline1 || "",
+    "Recipient addressline2": order.addressline2 || "",
+    "Recipient addressline3": order.addressline3 || "",
+    "City/Suburb": order.city || "",
+    State: order.state || "",
+    Postcode: order.postcode || "",
+    Country: label.recipientCountry || "",
+    Phone: order.phone || "",
+    Email: order.email || "",
   };
 }
 
@@ -404,13 +508,16 @@ function toExcelBuffer(rows) {
   const wb = xlsx.utils.book_new();
   const ws = xlsx.utils.json_to_sheet(rows, { header: EXCEL_COLUMNS });
 
-  ws['!cols'] = EXCEL_COLUMNS.map((col) => {
-    const maxLen = Math.max(col.length, ...rows.map((r) => String(r[col] ?? '').length));
+  ws["!cols"] = EXCEL_COLUMNS.map((col) => {
+    const maxLen = Math.max(
+      col.length,
+      ...rows.map((r) => String(r[col] ?? "").length),
+    );
     return { wch: Math.min(maxLen + 2, 40) };
   });
 
-  xlsx.utils.book_append_sheet(wb, ws, 'eTower Orders');
-  return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  xlsx.utils.book_append_sheet(wb, ws, "eTower Orders");
+  return xlsx.write(wb, { type: "buffer", bookType: "xlsx" });
 }
 
 async function fetchEtowerData(orderIds) {
@@ -422,8 +529,8 @@ async function fetchEtowerData(orderIds) {
 
   const results = await Promise.all(
     chunks.map((chunk) =>
-      Promise.all([queryOrders(chunk), gainLabelSpecs(chunk)])
-    )
+      Promise.all([queryOrders(chunk), gainLabelSpecs(chunk)]),
+    ),
   );
 
   const orders = results.flatMap(([o]) => o?.data || []);
@@ -436,31 +543,40 @@ const exportEtowerExcel = async (req, res) => {
     const { orderIds } = req.body || {};
 
     if (!Array.isArray(orderIds) || !orderIds.length) {
-      return ApiResponse.badRequest(res, 'Danh sách orderIds không hợp lệ.');
+      return ApiResponse.badRequest(res, "Danh sách orderIds không hợp lệ.");
     }
 
     const { orders, labels } = await fetchEtowerData(orderIds);
 
     const labelMap = Object.fromEntries(
-      labels.filter((l) => l.orderId).map((l) => [l.orderId, l])
+      labels.filter((l) => l.orderId).map((l) => [l.orderId, l]),
     );
 
     const rows = orders
-      .filter((item) => item.status === 'Success' && item.order)
+      .filter((item) => item.status === "Success" && item.order)
       .map((item) => buildExcelRow(item.order, labelMap[item.orderId] || {}));
 
     if (!rows.length) {
-      return ApiResponse.badRequest(res, 'Không có dữ liệu order nào hợp lệ để xuất Excel.');
+      return ApiResponse.badRequest(
+        res,
+        "Không có dữ liệu order nào hợp lệ để xuất Excel.",
+      );
     }
 
     const buffer = toExcelBuffer(rows);
 
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename="etower-orders-export.xlsx"');
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="etower-orders-export.xlsx"',
+    );
     return res.send(buffer);
   } catch (err) {
-    console.error('Export eTower Excel error:', err);
-    return ApiResponse.serverError(res, 'Có lỗi xảy ra khi xuất Excel.');
+    console.error("Export eTower Excel error:", err);
+    return ApiResponse.serverError(res, "Có lỗi xảy ra khi xuất Excel.");
   }
 };
 

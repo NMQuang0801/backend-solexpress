@@ -46,6 +46,60 @@
     background: radial-gradient(circle at top right, #ffeaf2, #ffffff 55%);
   }
 
+  .etw-filters {
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(226, 207, 255, 0.9);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+
+    .form-label.small {
+      font-weight: 600;
+      color: #5b3e91;
+    }
+
+    .form-control {
+      border-radius: 999px;
+      border-color: #e0d2ff;
+      padding-inline: 14px;
+      height: 32px;
+      font-size: 13px;
+
+      &:focus {
+        box-shadow: 0 0 0 2px rgba(141, 35, 205, 0.15);
+        border-color: #8d23cd;
+      }
+    }
+
+    .etw-filter-actions {
+      .btn {
+        border-radius: 999px;
+        padding: 4px 14px;
+        font-size: 13px;
+      }
+
+      .btn-primary {
+        background: linear-gradient(90deg, #8d23cd, #ff7eb3);
+        border-color: transparent;
+        font-weight: 600;
+      }
+
+      .btn-outline-secondary {
+        border-color: #d3c6f7;
+        color: #5b3e91;
+        background: #fff;
+
+        &:hover {
+          background: #f5f0ff;
+          color: #3d2968;
+        }
+      }
+    }
+  }
+
   .etw-card-header {
     display: flex;
     flex-direction: column;

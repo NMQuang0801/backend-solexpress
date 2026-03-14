@@ -23,7 +23,12 @@ const etowerLabelsService = () => {
   const getLabels = (
     pageIndex: number = 1,
     pageSize: number = 20,
-    textSearch: string = '',
+    filters: {
+      dateFrom?: string;
+      dateTo?: string;
+      referenceNo?: string;
+      trackingNo?: string;
+    } = {},
     sortField = 'Id',
     isDesc = true
   ) => {
@@ -36,7 +41,10 @@ const etowerLabelsService = () => {
       params: {
         pageIndex,
         pageSize,
-        textSearch,
+        dateFrom: filters.dateFrom || undefined,
+        dateTo: filters.dateTo || undefined,
+        referenceNo: filters.referenceNo || undefined,
+        trackingNo: filters.trackingNo || undefined,
         sortField,
         isDesc,
       },

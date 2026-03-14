@@ -8,14 +8,15 @@ const API_LABELS_CONFIG = {
 };
 
 // Error message mappings
-const ERROR_MESSAGES = {
+const LABEL_MESSAGES = {
   DUPLICATE_ORDER: '客户单号重复',
   DUPLICATE_ORDER_VI: 'Số đơn hàng của khách hàng được lặp lại',
   SUCCESS_CN: '成功',
   SUCCESS_VI: 'Thành công',
+  SUCCESS_EN: 'Success',
   FAILURE_CN: '失败',
   DEFAULT_ERROR: 'Có lỗi xảy ra'
 };
 
 
-module.exports = { API_LABELS_CONFIG, ERROR_MESSAGES };
+module.exports = { API_LABELS_CONFIG, LABEL_MESSAGES };

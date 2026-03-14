@@ -24,3 +24,25 @@ CREATE TABLE IF NOT EXISTS ksn_label (
     Status VARCHAR(50) NULL,
     UserId VARCHAR(255) NULL,
 );
+
+CREATE TABLE ksn_label_etower (
+    Id INT AUTO_INCREMENT PRIMARY KEY,
+    OrderId varchar(255) NOT NULL,
+    LabelUrl VARCHAR(500) NULL,
+    Datetime DATETIME NULL,
+    ReferenceNo VARCHAR(255) NULL,
+    TrackingNo VARCHAR(255) NULL,
+    State VARCHAR(100) NULL,
+    Postcode VARCHAR(20) NULL,
+    ServiceCode VARCHAR(255) NULL,
+    Status VARCHAR(50) NULL,
+    UserId VARCHAR(255) NULL,
+    IsDeleted boolean DEFAULT 0,
+);
+
+ALTER TABLE `solexpress`.`ksn_label_etower` 
+ADD COLUMN `IsDeleted` TINYINT NULL DEFAULT 0 AFTER `TrackingNo`,
+ADD COLUMN `TrackingNo` VARCHAR(255) NULL AFTER `ReferenceNo`,
+CHANGE COLUMN `OrderId` `ServiceCode` VARCHAR(256) NULL DEFAULT NULL,
+CHANGE COLUMN `ServiceCode` `ServiceCode` VARCHAR(256) NULL DEFAULT NULL,
+CHANGE COLUMN `ReferenceNo` `ServiceCode` VARCHAR(256) NULL DEFAULT NULL;

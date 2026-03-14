@@ -5,7 +5,7 @@ import { Image } from 'react-bootstrap';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 const BREADCRUMB_MAP = {
-  '/': 'Trang chủ',
+  '/': 'Cirro Label',
   '/etower': 'eTower Label',
 };
 

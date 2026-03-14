@@ -1,13 +1,14 @@
-import { FileUpload, LabelTable } from '@/components';
+import { FileUpload } from '@/components';
 import { labelsService } from '@/services';
 import { useState } from 'react';
 import { Col, Container, Row } from 'react-bootstrap';
+import { CirroTable } from './components';
 import './styles.scss';
 
-const Home = () => {
+const Cirro = () => {
   const [isImported, setIsImported] = useState(false);
 
-  const handleAuImport = (file: File) => {
+  const handleCirroImport = (file: File) => {
     const service = labelsService();
     return service.importLabels(file);
   };
@@ -33,12 +34,12 @@ const Home = () => {
       <FileUpload
         setIsImported={setIsImported}
         sampleHref="/static/label-sample.zip"
-        onImport={handleAuImport}
+        onImport={handleCirroImport}
         allowedExtensions={['.csv']}
       />
-      <LabelTable isImported={isImported} setIsImported={setIsImported} />
+      <CirroTable isImported={isImported} setIsImported={setIsImported} />
     </Container>
   );
 };
 
-export default Home;
+export default Cirro;

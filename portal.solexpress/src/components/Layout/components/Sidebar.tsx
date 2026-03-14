@@ -6,7 +6,12 @@ const Sidebar = ({ isActiveSidebarMenuMobile }: { isActiveSidebarMenuMobile: boo
   const currentPath = useMemo(() => location.pathname, [location.pathname]);
 
   const MENU_ITEMS = [
-    { key: 'home', label: 'Cirro Labels', path: '/', icon: <i className="bi bi-box2-fill"></i> },
+    {
+      key: 'cirro',
+      label: 'Cirro Labels',
+      path: '/cirro',
+      icon: <i className="bi bi-box2-fill"></i>,
+    },
     {
       key: 'etower',
       label: 'eTower Labels',

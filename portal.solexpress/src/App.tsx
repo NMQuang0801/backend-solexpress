@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import './assets/css/global.scss';
 import Layout from './components/Layout/Layout';
-import { Error, Home, Login, Etower } from './pages';
+import { Error, Cirro, Login, Etower } from './pages';
 
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -15,7 +15,7 @@ const App = () => {
     if (token && userStr) {
       setIsAuthenticated(true);
       if (location.pathname.includes('login')) {
-        navigate('/');
+        navigate('/cirro');
       }
     } else {
       setIsAuthenticated(false);
@@ -26,7 +26,8 @@ const App = () => {
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
-        <Route path="/" element={<Home />} />
+        <Route index element={<Navigate to="/cirro" replace />} />
+        <Route path="/cirro" element={<Cirro />} />
         <Route path="/etower" element={<Etower />} />
       </Route>
       {!isAuthenticated && <Route path="/login" element={<Login />} />}

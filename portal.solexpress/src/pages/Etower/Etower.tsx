@@ -1,7 +1,8 @@
 import { Badge, Col, Container, Row } from 'react-bootstrap';
 import { useState } from 'react';
 import { etowerLabelsService } from '@/services';
-import { FileUpload, LabelTable } from '@/components';
+import { FileUpload } from '@/components';
+import { EtowerTable } from './components';
 import './styles.scss';
 
 const Etower = () => {
@@ -91,7 +92,7 @@ const Etower = () => {
                 <span className="etw-card-title">Danh sách nhãn eTower</span>
               </div>
             </div>
-            <LabelTable variant="etower" isImported={isImported} setIsImported={setIsImported} />
+            <EtowerTable isImported={isImported} setIsImported={setIsImported} />
           </div>
         </Col>
       </Row>

@@ -6,7 +6,7 @@ import { TablePagination } from '@/components';
 import { Label, LabelsResponse } from '@/types/label';
 import moment from 'moment';
 import React, { Dispatch, useEffect, useState } from 'react';
-import { Col, Form, Row, Spinner, Table } from 'react-bootstrap';
+import { Button, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
 import { EtowerTableColumns } from '../types';
 
 type EtowerTableProps = {
@@ -30,6 +30,7 @@ const EtowerTable = ({ isImported, setIsImported }: EtowerTableProps) => {
     useTableSelection(labels);
   const { showLoading, hideLoading } = useLoading();
   const { showAlert } = useAlert();
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
 
   useEffect(() => {
     if (isImported) {
@@ -120,29 +121,40 @@ const EtowerTable = ({ isImported, setIsImported }: EtowerTableProps) => {
     setPageIndex(1);
   };
 
-  const handleDownloadSelected = async () => {
-    if (selectedIds.length === 0) return;
-
+  const downloadSelected = async (merged: boolean) => {
     showLoading();
     try {
       const service = etowerLabelsService();
-      const response = await service.downloadLabelsZip(selectedIds);
-      const blob = new Blob([response.data], { type: 'application/zip' });
+      const response = await service.downloadLabelsZip(selectedIds, merged);
+
+      const blob = new Blob([response.data], {
+        type: merged ? 'application/pdf' : 'application/zip',
+      });
+
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `etower-labels-${new Date().toISOString().slice(0, 10)}.zip`;
+      link.download = merged
+        ? `etower-labels-merged-${new Date().toISOString().slice(0, 10)}.pdf`
+        : `etower-labels-${new Date().toISOString().slice(0, 10)}.zip`;
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
+
       showAlert('success', 'Download labels thành công!');
     } catch (error) {
-      console.error('Error downloading labels zip:', error);
+      console.error('Error downloading labels:', error);
       showAlert('error', getErrorMessages(error, 'Có lỗi xảy ra khi download labels'));
     } finally {
       hideLoading();
     }
+  };
+
+  const handleDownloadSelected = async () => {
+    if (selectedIds.length === 0) return;
+    setShowDownloadModal(true);
   };
 
   const handleExportExcel = async () => {
@@ -333,6 +345,42 @@ const EtowerTable = ({ isImported, setIsImported }: EtowerTableProps) => {
           </button>
         </Col>
       </Row>
+
+      <Modal
+        show={showDownloadModal}
+        onHide={() => setShowDownloadModal(false)}
+        centered
+        size="lg"
+        aria-labelledby="download-labels-modal"
+      >
+        <Modal.Header closeButton>
+          <Modal.Title id="download-labels-modal">Tùy chọn tải nhãn</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          Bạn muốn tải nhãn cho <strong>{selectedIds.length}</strong> đơn theo kiểu nào?
+        </Modal.Body>
+        <Modal.Footer>
+          <Button
+            variant="outline-primary"
+            onClick={() => {
+              setShowDownloadModal(false);
+              void downloadSelected(false);
+            }}
+          >
+            Xuất lẻ (ZIP)
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setShowDownloadModal(false);
+              void downloadSelected(true);
+            }}
+          >
+            Xuất merge (1 PDF)
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
       <Row>
         <Table className="tablet-packet" bordered striped responsive>
           <thead>

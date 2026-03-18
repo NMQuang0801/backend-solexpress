@@ -51,12 +51,12 @@ const etowerLabelsService = () => {
     });
   };
 
-  const downloadLabelsZip = (ids: number[]) => {
+  const downloadLabelsZip = (ids: number[], merged: boolean) => {
     const token = localStorage.getItem('token');
 
     return axiosInstance.post(
       `${process.env.REACT_APP_API_URL}/api/etower-labels/download-zip`,
-      { ids },
+      { ids, merged },
       {
         headers: {
           Authorization: `Bearer ${token}`,

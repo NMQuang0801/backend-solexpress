@@ -107,6 +107,23 @@ async function printLabels(orderIds) {
   return data;
 }
 
+async function printMergedLabels(orderIds) {
+  const path = API_ETOWER_CONFIG.printLabelPath;
+  const url = `${API_ETOWER_CONFIG.baseUrl}${path}`;
+  const body = {
+    orderIds,
+    masterIds: null,
+    labelType: 1,
+    packinglist: false,
+    merged: true,
+    labelFormat: null,
+    dpi: null,
+  };
+  const headers = API_ETOWER_CONFIG.buildHeaders("POST", path);
+  const { data } = await axios.post(url, body, { headers });
+  return data;
+}
+
 async function queryOrders(orderIds) {
   const path = API_ETOWER_CONFIG.queryOrdersPath;
   const url = `${API_ETOWER_CONFIG.baseUrl}${path}`;
@@ -442,19 +459,66 @@ const downloadEtowerLabel = async (req, res) => {
 
 const downloadEtowerLabelsZip = async (req, res) => {
   try {
-    const { ids } = req.body || {};
+    const { ids, merged } = req.body || {};
 
     if (!Array.isArray(ids) || !ids.length) {
       return ApiResponse.badRequest(res, "Danh sách Id không hợp lệ.");
     }
 
     const [rows] = await sqlService.query(
-      `SELECT Id, OrderId, LabelUrl FROM ksn_label_etower WHERE Id IN (${ids.map(() => "?").join(",")})`,
+      `SELECT Id, OrderId, LabelUrl FROM ksn_label_etower WHERE Id IN (${ids
+        .map(() => "?")
+        .join(",")})`,
       ids,
     );
 
     if (!rows?.length) {
       return ApiResponse.notFound(res, "Không tìm thấy label nào tương ứng.");
+    }
+
+    if (merged) {
+      const orderIds = rows
+        .map((row) => row.OrderId || row.orderId)
+        .filter((orderId) => !!orderId);
+
+      if (!orderIds.length) {
+        return ApiResponse.badRequest(
+          res,
+          "Không tìm thấy orderId hợp lệ để merge label.",
+        );
+      }
+
+      const labelResult = await printMergedLabels(orderIds);
+
+      if (!labelResult || !labelResult.data || labelResult.data.length < 1) {
+        return ApiResponse.serverError(
+          res,
+          "Không nhận được dữ liệu label đã merge từ eTower.",
+        );
+      }
+
+      let base64Pdf = null;
+
+      if (typeof labelResult.data[0].labelContent === "string") {
+        base64Pdf = labelResult.data[0].labelContent;
+      }
+
+      if (!base64Pdf || typeof base64Pdf !== "string") {
+        return ApiResponse.serverError(
+          res,
+          "Định dạng dữ liệu label đã merge không hợp lệ.",
+        );
+      }
+
+      const pdfBuffer = Buffer.from(base64Pdf, "base64");
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="etower-labels-merged.pdf"',
+      );
+
+      return res.send(pdfBuffer);
     }
 
     const zip = new JSZip();
@@ -628,7 +692,10 @@ async function runWithConcurrency(items, concurrency, fn) {
       }
     }
   }
-  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    () => worker(),
+  );
   await Promise.all(workers);
   return results;
 }
@@ -646,26 +713,38 @@ const deleteEtowerOrders = async (req, res) => {
     }
 
     const normalized = orderIds
-      .map((id) => (id != null && String(id).trim() !== "" ? String(id).trim() : null))
+      .map((id) =>
+        id != null && String(id).trim() !== "" ? String(id).trim() : null,
+      )
       .filter(Boolean);
     const emptyCount = orderIds.length - normalized.length;
     if (emptyCount) {
-      return ApiResponse.badRequest(res, "Danh sách orderIds chứa giá trị trống.");
+      return ApiResponse.badRequest(
+        res,
+        "Danh sách orderIds chứa giá trị trống.",
+      );
     }
 
     const CONCURRENCY = 8;
-    const results = await runWithConcurrency(normalized, CONCURRENCY, async (refOrId) => {
-      const result = await deleteOrderOnEtower(refOrId);
-      if (result?.status !== "Success") {
-        const msg = result?.errors
-          ? Array.isArray(result.errors)
-            ? result.errors.map((e) => e.message || e).join("; ")
-            : String(result.errors)
-          : "Xóa thất bại.";
-        throw new Error(msg);
-      }
-      return { orderId: result.orderId ?? refOrId, referenceNo: result.referenceNo ?? refOrId };
-    });
+    const results = await runWithConcurrency(
+      normalized,
+      CONCURRENCY,
+      async (refOrId) => {
+        const result = await deleteOrderOnEtower(refOrId);
+        if (result?.status !== "Success") {
+          const msg = result?.errors
+            ? Array.isArray(result.errors)
+              ? result.errors.map((e) => e.message || e).join("; ")
+              : String(result.errors)
+            : "Xóa thất bại.";
+          throw new Error(msg);
+        }
+        return {
+          orderId: result.orderId ?? refOrId,
+          referenceNo: result.referenceNo ?? refOrId,
+        };
+      },
+    );
 
     const deleted = [];
     const errors = [];
@@ -675,12 +754,11 @@ const deleteEtowerOrders = async (req, res) => {
       if (r.ok) {
         deleted.push(r.value);
       } else {
-        const msg =
-          r.error?.response?.data?.errors
-            ? Array.isArray(r.error.response.data.errors)
-              ? r.error.response.data.errors.map((e) => e.message || e).join("; ")
-              : String(r.error.response.data.errors)
-            : r.error?.message || "Lỗi gọi API eTower.";
+        const msg = r.error?.response?.data?.errors
+          ? Array.isArray(r.error.response.data.errors)
+            ? r.error.response.data.errors.map((e) => e.message || e).join("; ")
+            : String(r.error.response.data.errors)
+          : r.error?.message || "Lỗi gọi API eTower.";
         errors.push({ orderId: refOrId, message: msg });
       }
     }
@@ -703,7 +781,8 @@ const deleteEtowerOrders = async (req, res) => {
 
     return ApiResponse.send(res, 200, {
       messages,
-      errorMessages: errorCount > 0 ? errors.map((e) => `${e.orderId}: ${e.message}`) : null,
+      errorMessages:
+        errorCount > 0 ? errors.map((e) => `${e.orderId}: ${e.message}`) : null,
       data: { successCount, errorCount, deleted, errors },
     });
   } catch (err) {

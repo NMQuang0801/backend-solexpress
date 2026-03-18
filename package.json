@@ -1,0 +1,14 @@
+{
+  "name": "solexpress-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "concurrently -n BE,FE -c blue,green \"npm start --prefix backend.solexpress\" \"npm start --prefix portal.solexpress\"",
+    "start:be": "npm start --prefix backend.solexpress",
+    "start:fe": "npm start --prefix portal.solexpress",
+    "install:all": "npm install --prefix backend.solexpress && npm install --prefix portal.solexpress"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

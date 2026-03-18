@@ -67,8 +67,27 @@ async function createShippingOrders(orders) {
   const path = API_ETOWER_CONFIG.createOrdersPath;
   const url = `${API_ETOWER_CONFIG.baseUrl}${path}`;
   const headers = API_ETOWER_CONFIG.buildHeaders("POST", path);
-  const { data } = await axios.post(url, orders, { headers });
-  return data;
+  console.log("=== REQUEST ===");
+  console.log("URL:", url);
+  console.log("Headers:", headers);
+  console.log("Body:", orders);
+
+  try {
+    const response = await axios.post(url, orders, { headers });
+
+    // Log response
+    console.log("=== RESPONSE ===");
+    console.log("Status:", response.status);
+    console.log("Data:", response.data);
+
+    return response.data;
+  } catch (error) {
+    console.log("=== ERROR ===");
+    console.log("Message:", error.message);
+    console.log("Response:", error.response?.data);
+
+    throw error;
+  }
 }
 
 async function printLabels(orderIds) {

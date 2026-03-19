@@ -71,6 +71,21 @@ const Etower = () => {
                     Kiểm tra tổng <strong>invoiceValue</strong> gần bằng sum(itemCount × unitValue)
                     (sai số &lt;= 0.1).
                   </li>
+                  <li>
+                    <strong>ServiceCode</strong> for AUPOST: <strong>UBI.AU2AU.AUPOST.Y</strong>.
+                  </li>
+                  <li>
+                    <strong>ServiceCode</strong> for TOLL: <strong>UBI.AU2AU.IPEC</strong>.
+                  </li>
+                  <li>
+                    <strong>ServiceOption</strong> for AUPOST:
+                    <>
+                      <strong>E-Parcel.ATL</strong> hoặc <strong>Signature</strong>.
+                    </>
+                  </li>
+                  <li>
+                    <strong>ServiceOption</strong> for TOLL: có thể bỏ trống.
+                  </li>
                 </ul>
               )}
             </div>

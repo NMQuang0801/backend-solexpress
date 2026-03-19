@@ -48,7 +48,7 @@ app.get('/', (_req, res) => {
 });
 
 app.get('/health', (_req, res) => {
-  res.send('Welcome to the backend API! v1.0.1');
+  res.send('Welcome to the backend API! v1.0.2');
 });
 
 app.get('/api/check-token', verifyToken, (_req, res) => {

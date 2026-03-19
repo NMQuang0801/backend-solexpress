@@ -18,7 +18,7 @@ class GetLabelsRequest {
     this.referenceNo = referenceNo;
     this.trackingNo = trackingNo;
     this.sortField = sortField;
-    this.isDesc = isDesc !== undefined ? isDesc == 'true' : true;
+    this.isDesc = isDesc !== undefined ? isDesc === true || isDesc === 'true' : true;
   }
 }
 

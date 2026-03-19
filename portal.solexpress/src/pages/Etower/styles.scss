@@ -74,6 +74,16 @@
       }
     }
 
+    textarea.form-control {
+      border-radius: 12px;
+      height: calc(5 * 1.5em + 20px);
+      padding: 10px 14px;
+      resize: none;
+      overflow-y: auto;
+      line-height: 1.5;
+      font-size: 13px;
+    }
+
     .etw-filter-actions {
       .btn {
         border-radius: 999px;

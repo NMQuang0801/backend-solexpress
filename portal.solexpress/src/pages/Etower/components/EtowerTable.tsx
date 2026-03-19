@@ -254,8 +254,9 @@ const EtowerTable = ({ isImported, setIsImported }: EtowerTableProps) => {
             <Form.Group>
               <Form.Label className="small mb-1">Reference No</Form.Label>
               <Form.Control
-                type="text"
-                placeholder="Tìm reference..."
+                as="textarea"
+                rows={5}
+                placeholder={'Mỗi dòng một reference\nVí dụ:\nREF001\nREF002'}
                 value={referenceNo}
                 onChange={(e) => handleReferenceNoChange(e.target.value)}
               />
@@ -265,8 +266,9 @@ const EtowerTable = ({ isImported, setIsImported }: EtowerTableProps) => {
             <Form.Group>
               <Form.Label className="small mb-1">Tracking No</Form.Label>
               <Form.Control
-                type="text"
-                placeholder="Tìm tracking..."
+                as="textarea"
+                rows={5}
+                placeholder={'Mỗi dòng một tracking\nVí dụ:\n123456\n789012'}
                 value={trackingNo}
                 onChange={(e) => handleTrackingNoChange(e.target.value)}
               />

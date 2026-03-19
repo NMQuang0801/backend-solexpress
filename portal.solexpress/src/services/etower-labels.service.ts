@@ -34,11 +34,9 @@ const etowerLabelsService = () => {
   ) => {
     const token = localStorage.getItem('token');
 
-    return axiosInstance.get(`${process.env.REACT_APP_API_URL}/api/etower-labels`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      params: {
+    return axiosInstance.post(
+      `${process.env.REACT_APP_API_URL}/api/etower-labels/search`,
+      {
         pageIndex,
         pageSize,
         dateFrom: filters.dateFrom || undefined,
@@ -48,7 +46,12 @@ const etowerLabelsService = () => {
         sortField,
         isDesc,
       },
-    });
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
   };
 
   const downloadLabelsZip = (ids: number[], merged: boolean) => {

@@ -323,7 +323,7 @@ const getEtowerLabels = async (req, res) => {
       pageSize,
       sortField,
       isDesc,
-    } = new GetLabelsRequest(req.query);
+    } = new GetLabelsRequest(req.body);
 
     if (!pageIndex || pageIndex < 1) {
       return ApiResponse.validationError(res, "PageIndex không đúng.");
@@ -347,35 +347,27 @@ const getEtowerLabels = async (req, res) => {
       searchParams.push(`${dateTo.trim()} 23:59:59`);
     }
 
-    const hasRef = referenceNo && referenceNo.trim() !== "";
-    const hasTracking = trackingNo && trackingNo.trim() !== "";
-    if (hasRef || hasTracking) {
-      if (hasRef && hasTracking) {
-        const escapedRef = referenceNo
-          .trim()
-          .replace(/%/g, "\\%")
-          .replace(/_/g, "\\_");
-        const escapedTrack = trackingNo
-          .trim()
-          .replace(/%/g, "\\%")
-          .replace(/_/g, "\\_");
-        refOrTrackingParts.push("(ReferenceNo LIKE ? OR TrackingNo LIKE ?)");
-        refOrTrackingParams.push(`%${escapedRef}%`, `%${escapedTrack}%`);
-      } else if (hasRef) {
-        const escaped = referenceNo
-          .trim()
-          .replace(/%/g, "\\%")
-          .replace(/_/g, "\\_");
-        refOrTrackingParts.push("ReferenceNo LIKE ?");
-        refOrTrackingParams.push(`%${escaped}%`);
-      } else {
-        const escaped = trackingNo
-          .trim()
-          .replace(/%/g, "\\%")
-          .replace(/_/g, "\\_");
-        refOrTrackingParts.push("TrackingNo LIKE ?");
-        refOrTrackingParams.push(`%${escaped}%`);
+    const escapelike = (v) =>
+      v.trim().replace(/%/g, "\\%").replace(/_/g, "\\_");
+    const splitValues = (str) =>
+      str ? str.replace(/[\n\r;, ]+/g, ",").split(",").map((s) => s.trim()).filter(Boolean) : [];
+
+    const refList = splitValues(referenceNo);
+    const trackList = splitValues(trackingNo);
+
+    if (refList.length > 0 || trackList.length > 0) {
+      const orClauses = [];
+
+      for (const ref of refList) {
+        orClauses.push("ReferenceNo LIKE ?");
+        refOrTrackingParams.push(`%${escapelike(ref)}%`);
       }
+      for (const track of trackList) {
+        orClauses.push("TrackingNo LIKE ?");
+        refOrTrackingParams.push(`%${escapelike(track)}%`);
+      }
+
+      refOrTrackingParts.push(`(${orClauses.join(" OR ")})`);
       searchParams.push(...refOrTrackingParams);
     }
 

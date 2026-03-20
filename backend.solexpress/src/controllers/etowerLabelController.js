@@ -13,7 +13,9 @@ function mapRowToEtowerOrder(row) {
     referenceNo: row.referenceNo,
     country: row.country,
     serviceCode: row.serviceCode,
-    serviceOption: row.serviceOption,
+    serviceOption: row.serviceOption && String(row.serviceOption).trim() !== ""
+  ? String(row.serviceOption).trim()
+  : "E-Parcel.ATL",
     facility: row.facility,
     state: row.state,
     city: row.city,
@@ -41,6 +43,10 @@ function mapRowToEtowerOrder(row) {
     shipperPostcode: row.shipperPostcode,
     shipperCountry: row.shipperCountry,
     volume: row.volume ? Number(row.volume) : undefined,
+    returnCountry: row.returnCountry,
+    returnName: row.returnName,
+    shipperCompanyName: row.shipperCompanyName,
+    shipperName: row.shipperName,
     orderItems: [
       {
         itemNo: row.itemNo || 1,

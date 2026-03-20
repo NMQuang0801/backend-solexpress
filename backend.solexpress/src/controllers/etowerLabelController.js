@@ -73,10 +73,6 @@ async function createShippingOrders(orders) {
   const path = API_ETOWER_CONFIG.createOrdersPath;
   const url = `${API_ETOWER_CONFIG.baseUrl}${path}`;
   const headers = API_ETOWER_CONFIG.buildHeaders("POST", path);
-  console.log("=== REQUEST ===");
-  console.log("URL:", url);
-  console.log("Headers:", headers);
-  console.log("Body:", orders);
 
   try {
     const response = await axios.post(url, orders, { headers });
@@ -109,8 +105,17 @@ async function printLabels(orderIds) {
     dpi: null,
   };
   const headers = API_ETOWER_CONFIG.buildHeaders("POST", path);
-  const { data } = await axios.post(url, body, { headers });
-  return data;
+  try {
+    const response  = await axios.post(url, body, { headers });
+    // Log response
+    return response.data;
+  } catch (error) {
+    console.log("=== ERROR ===");
+    console.log("Message:", error.message);
+    console.log("Response:", error.response?.data);
+
+    throw error;
+  }
 }
 
 async function printMergedLabels(orderIds) {
@@ -184,24 +189,26 @@ function parseExcelWithFirstRowHeader(sheet) {
   return xlsx.utils.sheet_to_json(sheet);
 }
 
-async function batchInsertLabels(labelData, orderMetaById, userId) {
+async function batchInsertLabels(labelData, orderMetaById, userId, orders) {
   const insertRows = [];
 
   for (const item of labelData) {
     if (item.status !== "Success") continue;
 
-    const key = item.orderId || item.trackingNo;
+    const key = item.orderId;
     const meta = key ? orderMetaById[key] || {} : {};
 
+    const order = orders.find((o) => String(o.referenceNo) === String(meta.referenceNo));
+
     insertRows.push([
-      item.orderId || "",
+      meta.orderId || "",
       item.labelUrl || "",
       new Date(),
       meta.referenceNo || item.referenceNo || "",
       item.trackingNo || "",
-      meta.state || "",
-      meta.postcode || "",
-      meta.serviceCode || "",
+      order?.state || "",
+      order?.postcode || "",
+      order?.serviceCode || "",
       item.status
         ?.replaceAll(LABEL_MESSAGES.SUCCESS_CN, LABEL_MESSAGES.SUCCESS_VI)
         ?.replaceAll(LABEL_MESSAGES.SUCCESS_EN, LABEL_MESSAGES.SUCCESS_VI) ??
@@ -265,10 +272,10 @@ const importEtowerLabels = async (req, res) => {
         const sourceOrder = chunk[idx];
 
         if (item.status === "Success") {
-          const key = item.orderId || item.trackingNo;
+          const key = item.referenceNo;
           if (key) {
             createdOrderIds.push(key);
-            if (sourceOrder) orderMetaById[key] = sourceOrder;
+            if (sourceOrder) orderMetaById[key] = item;
           }
         } else if (item.errors?.length) {
           createErrors.push(
@@ -292,8 +299,8 @@ const importEtowerLabels = async (req, res) => {
     if (!labelResult?.data) {
       return ApiResponse.badRequest(res, ["Print Label thất bại."]);
     }
-
-    await batchInsertLabels(labelResult.data, orderMetaById, userId);
+    
+    await batchInsertLabels(labelResult.data, orderMetaById, userId, orders);
 
     const successCount = createdOrderIds.length;
     const errorCount = createErrors.length;
@@ -464,9 +471,10 @@ const downloadEtowerLabelsZip = async (req, res) => {
     }
 
     const [rows] = await sqlService.query(
-      `SELECT Id, OrderId, LabelUrl FROM ksn_label_etower WHERE Id IN (${ids
+      `SELECT Id, OrderId, LabelUrl FROM ksn_label_etower WHERE IsDeleted = false AND Id IN (${ids
         .map(() => "?")
-        .join(",")})`,
+        .join(",")})
+         ORDER BY ReferenceNo ASC`,
       ids,
     );
 
@@ -478,7 +486,7 @@ const downloadEtowerLabelsZip = async (req, res) => {
       const orderIds = rows
         .map((row) => row.OrderId || row.orderId)
         .filter((orderId) => !!orderId);
-
+      
       if (!orderIds.length) {
         return ApiResponse.badRequest(
           res,
@@ -509,11 +517,19 @@ const downloadEtowerLabelsZip = async (req, res) => {
       }
 
       const pdfBuffer = Buffer.from(base64Pdf, "base64");
+      const now = new Date();
+
+      const timestamp =
+        now.getFullYear().toString() +
+        String(now.getMonth() + 1).padStart(2, "0") +
+        String(now.getDate()).padStart(2, "0") +
+        String(now.getHours()).padStart(2, "0") +
+        String(now.getMinutes()).padStart(2, "0");
 
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader(
         "Content-Disposition",
-        'attachment; filename="etower-labels-merged.pdf"',
+        `attachment; filename="etower-labels-merged-${timestamp}.pdf"`,
       );
 
       return res.send(pdfBuffer);

@@ -471,7 +471,7 @@ const downloadEtowerLabelsZip = async (req, res) => {
     }
 
     const [rows] = await sqlService.query(
-      `SELECT Id, OrderId, LabelUrl FROM ksn_label_etower WHERE IsDeleted = false AND Id IN (${ids
+      `SELECT Id, OrderId, LabelUrl, ReferenceNo FROM ksn_label_etower WHERE IsDeleted = false AND Id IN (${ids
         .map(() => "?")
         .join(",")})
          ORDER BY ReferenceNo ASC`,
@@ -484,13 +484,13 @@ const downloadEtowerLabelsZip = async (req, res) => {
 
     if (merged) {
       const orderIds = rows
-        .map((row) => row.OrderId || row.orderId)
-        .filter((orderId) => !!orderId);
+        .map((row) => row.ReferenceNo || row.ReferenceNo)
+        .filter((ReferenceNo) => !!ReferenceNo);
       
       if (!orderIds.length) {
         return ApiResponse.badRequest(
           res,
-          "Không tìm thấy orderId hợp lệ để merge label.",
+          "Không tìm thấy ReferenceNo hợp lệ để merge label.",
         );
       }
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const useTableSort = (defaultField = 'Id', defaultDesc = true) => {
+const useTableSort = (defaultField = '', defaultDesc = false) => {
   const [sortField, setSortField] = useState(defaultField);
   const [isDesc, setIsDesc] = useState(defaultDesc);
 

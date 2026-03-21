@@ -473,8 +473,7 @@ const downloadEtowerLabelsZip = async (req, res) => {
     const [rows] = await sqlService.query(
       `SELECT Id, OrderId, LabelUrl, ReferenceNo FROM ksn_label_etower WHERE IsDeleted = false AND Id IN (${ids
         .map(() => "?")
-        .join(",")})
-         ORDER BY ReferenceNo ASC`,
+        .join(",")})`,
       ids,
     );
 

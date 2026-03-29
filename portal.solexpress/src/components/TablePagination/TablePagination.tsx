@@ -9,7 +9,7 @@ type TablePaginationProps = {
   onPageSizeChange: (size: number) => void;
 };
 
-const PAGE_SIZE_OPTIONS = [20, 40, 60, 80];
+const PAGE_SIZE_OPTIONS = [20, 40, 60, 80, 100, 200, 300, 400, 500, 1000];
 const MAX_VISIBLE_PAGES = 5;
 
 const TablePagination = ({

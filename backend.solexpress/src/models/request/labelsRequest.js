@@ -7,8 +7,8 @@ class GetLabelsRequest {
     dateTo = '',
     referenceNo = '',
     trackingNo = '',
-    sortField = 'Id',
-    isDesc,
+    sortField = 'Datetime',
+    isDesc = true,
   }) {
     this.pageIndex = pageIndex;
     this.pageSize = pageSize;

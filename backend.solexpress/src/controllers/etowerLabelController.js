@@ -350,6 +350,7 @@ const getEtowerLabels = async (req, res) => {
     const dateConditions = [];
     const refOrTrackingParts = [];
     const refOrTrackingParams = [];
+    let orderParams = [];
 
     if (dateFrom && dateFrom.trim() !== "") {
       dateConditions.push("Datetime >= ?");
@@ -405,15 +406,43 @@ const getEtowerLabels = async (req, res) => {
       ? sortField
       : "Id";
     const direction = isDesc ? "DESC" : "ASC";
+    writeLog(`isDesc:` + isDesc);
+    writeLog(`sortField:` + sortField);
 
     const limit = parseInt(pageSize);
     const offset = (parseInt(pageIndex) - 1) * limit;
+    const hasRefOrTracking =
+      (refList && refList.length > 0) ||
+      (trackList && trackList.length > 0);
+
+    let orderByClause = "";
+
+    if (refList.length > 0) {
+        orderParams = refList;
+        orderByClause = `
+        ORDER BY FIELD(ReferenceNo, ${refList.map(() => "?").join(",")})
+      `;
+    } else if (trackList.length > 0) {
+        orderParams = trackList;
+        orderByClause = `
+        ORDER BY FIELD(TrackingNo, ${trackList.map(() => "?").join(",")})
+      `;
+    } else {
+      orderByClause = `ORDER BY ${safeSortField} ${direction}`;
+    }
+
+    const sql = `SELECT * ${baseWhere} ${orderByClause} LIMIT prarm OFFSET prarm`;
+    const params = [...searchParams, ...orderParams, limit, offset];
+
+    //const fullQuery = mysql.format(sql, params);
+    writeLog(sql);
+    writeLog(params);
 
     const [countRows, dataRows] = await Promise.all([
       sqlService.query(`SELECT COUNT(*) AS total ${baseWhere}`, searchParams),
       sqlService.query(
-        `SELECT * ${baseWhere} ORDER BY ${safeSortField} ${direction} LIMIT ? OFFSET ?`,
-        [...searchParams, limit, offset],
+        `SELECT * ${baseWhere} ${orderByClause} LIMIT ? OFFSET ?`,
+        [...searchParams, ...orderParams, limit, offset],
       ),
     ]);
 
@@ -812,3 +841,40 @@ module.exports = {
   exportEtowerExcel,
   deleteEtowerOrders,
 };
+
+const fs = require("fs");
+const path = require("path");
+
+const logDir = path.join(__dirname, "../logs");
+const logFile = path.join(logDir, "app.log");
+
+// đảm bảo folder tồn tại
+function ensureLogDir() {
+  try {
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+  } catch (err) {
+    console.error("Create log dir failed:", err);
+  }
+}
+
+function writeLog(text) {
+  try {
+    ensureLogDir();
+
+    const time = new Date().toISOString();
+    const line = `[${time}] ${text}\n`;
+
+    fs.appendFile(logFile, line, (err) => {
+      if (err) {
+        // fallback: in ra console nếu ghi file lỗi
+        console.error("Write log failed:", err);
+        console.log(line);
+      }
+    });
+  } catch (err) {
+    // fallback cuối cùng
+    console.error("Logger crash:", err);
+  }
+}

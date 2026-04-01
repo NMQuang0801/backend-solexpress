@@ -29,7 +29,7 @@ const etowerLabelsService = () => {
       referenceNo?: string;
       trackingNo?: string;
     } = {},
-    sortField = 'Id',
+    sortField = 'Datetime',
     isDesc = true
   ) => {
     const token = localStorage.getItem('token');

@@ -130,6 +130,10 @@ async function printMergedLabels(orderIds) {
     labelFormat: null,
     dpi: null,
   };
+  const bodyText = JSON.stringify(body); // chuyển thành text
+
+  writeLog(bodyText);
+  
   const headers = API_ETOWER_CONFIG.buildHeaders("POST", path);
   const { data } = await axios.post(url, body, { headers });
   return data;
@@ -498,13 +502,18 @@ const downloadEtowerLabelsZip = async (req, res) => {
     if (!Array.isArray(ids) || !ids.length) {
       return ApiResponse.badRequest(res, "Danh sách Id không hợp lệ.");
     }
+    const bodyText = JSON.stringify(ids); // chuyển thành text
 
+    writeLog(bodyText);
+    
     const [rows] = await sqlService.query(
-      `SELECT Id, OrderId, LabelUrl, ReferenceNo FROM ksn_label_etower WHERE IsDeleted = false AND Id IN (${ids
-        .map(() => "?")
-        .join(",")})`,
-      ids,
-    );
+        `SELECT Id, OrderId, LabelUrl, ReferenceNo 
+        FROM ksn_label_etower 
+        WHERE IsDeleted = false 
+          AND Id IN (${ids.map(() => "?").join(",")})
+        ORDER BY FIELD(Id, ${ids.map(() => "?").join(",")})`,
+        [...ids, ...ids],
+      );
 
     if (!rows?.length) {
       return ApiResponse.notFound(res, "Không tìm thấy label nào tương ứng.");

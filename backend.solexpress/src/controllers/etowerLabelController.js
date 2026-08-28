@@ -7,6 +7,14 @@ const { API_ETOWER_CONFIG } = require("../config/api-etower");
 const { GetLabelsRequest } = require("../models/request/labelsRequest");
 const { LablesResponse } = require("../models/response/labelsResponse");
 const { LABEL_MESSAGES } = require("../config/api-labels");
+const {
+  printLabelsBatched,
+  insertOrderMappings,
+  lookupMappingsByRefOrTracking,
+  buildOrderMetaFromMappings,
+  getAllPrintErrors,
+  buildOrderMetaFromErrors,
+} = require("../services/etowerPrintHelper");
 
 function mapRowToEtowerOrder(row) {
   return {
@@ -106,8 +114,10 @@ async function printLabels(orderIds) {
   };
   const headers = API_ETOWER_CONFIG.buildHeaders("POST", path);
   try {
-    const response  = await axios.post(url, body, { headers });
-    // Log response
+    const response = await axios.post(url, body, {
+      headers,
+      timeout: 120000,
+    });
     return response.data;
   } catch (error) {
     console.log("=== ERROR ===");
@@ -193,47 +203,6 @@ function parseExcelWithFirstRowHeader(sheet) {
   return xlsx.utils.sheet_to_json(sheet);
 }
 
-async function batchInsertLabels(labelData, orderMetaById, userId, orders) {
-  const insertRows = [];
-
-  for (const item of labelData) {
-    if (item.status !== "Success") continue;
-
-    const key = item.orderId;
-    const meta = key ? orderMetaById[key] || {} : {};
-
-    const order = orders.find((o) => String(o.referenceNo) === String(meta.referenceNo));
-
-    insertRows.push([
-      meta.orderId || "",
-      item.labelUrl || "",
-      new Date(),
-      meta.referenceNo || item.referenceNo || "",
-      item.trackingNo || "",
-      order?.state || "",
-      order?.postcode || "",
-      order?.serviceCode || "",
-      item.status
-        ?.replaceAll(LABEL_MESSAGES.SUCCESS_CN, LABEL_MESSAGES.SUCCESS_VI)
-        ?.replaceAll(LABEL_MESSAGES.SUCCESS_EN, LABEL_MESSAGES.SUCCESS_VI) ??
-        LABEL_MESSAGES.SUCCESS_VI,
-      userId,
-    ]);
-  }
-
-  if (!insertRows.length) return;
-
-  const placeholders = insertRows
-    .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .join(", ");
-  const flatValues = insertRows.flat();
-
-  await sqlService.query(
-    `INSERT INTO ksn_label_etower (OrderId, LabelUrl, Datetime, ReferenceNo, TrackingNo, State, Postcode, ServiceCode, Status, UserId) VALUES ${placeholders}`,
-    flatValues,
-  );
-}
-
 const importEtowerLabels = async (req, res) => {
   if (!req.file) {
     return ApiResponse.badRequest(
@@ -298,29 +267,48 @@ const importEtowerLabels = async (req, res) => {
       );
     }
 
-    const labelResult = await printLabels(createdOrderIds);
+    await insertOrderMappings(
+      createdOrderIds.map((ref) => ({
+        referenceNo: ref,
+        orderId: orderMetaById[ref]?.orderId || ref,
+        trackingNo: null,
+      })),
+      userId,
+    );
 
-    if (!labelResult?.data) {
-      return ApiResponse.badRequest(res, ["Print Label thất bại."]);
-    }
-    
-    await batchInsertLabels(labelResult.data, orderMetaById, userId, orders);
+    const { printErrors, successCount, errorCount } = await printLabelsBatched(
+      createdOrderIds,
+      orderMetaById,
+      userId,
+      orders,
+    );
 
-    const successCount = createdOrderIds.length;
-    const errorCount = createErrors.length;
-    const messages = `Thành công ${successCount} đơn.`;
+    const messages =
+      errorCount > 0
+        ? `In nhãn thành công ${successCount} đơn. Lỗi ${errorCount} đơn.`
+        : `Thành công ${successCount} đơn.`;
 
-    if (errorCount > 0) {
+    if (errorCount > 0 || createErrors.length > 0) {
       return ApiResponse.send(res, 200, {
         messages,
-        errorMessages: createErrors,
-        data: { createdOrderIds, successCount, errorCount },
+        errorMessages: [
+          ...createErrors,
+          ...printErrors.map(
+            (e) => `${e.referenceNo || e.orderId}: ${e.errorMessage}`,
+          ),
+        ],
+        data: {
+          createdOrderIds,
+          successCount,
+          errorCount: createErrors.length + errorCount,
+          printErrorCount: errorCount,
+        },
       });
     }
 
     return ApiResponse.success(
       res,
-      { createdOrderIds, successCount, errorCount },
+      { createdOrderIds, successCount, errorCount: 0 },
       messages,
     );
   } catch (err) {
@@ -842,6 +830,115 @@ const deleteEtowerOrders = async (req, res) => {
   }
 };
 
+const getPrintErrors = async (_req, res) => {
+  try {
+    const errors = await getAllPrintErrors();
+    return ApiResponse.success(res, { total: errors.length, data: errors });
+  } catch (err) {
+    console.error("Get print errors:", err);
+    return ApiResponse.serverError(res, "Có lỗi xảy ra khi lấy danh sách lỗi in nhãn.");
+  }
+};
+
+const retryAdminPrintErrors = async (req, res) => {
+  const userId = req.user.username;
+
+  try {
+    const errors = await getAllPrintErrors();
+    if (!errors.length) {
+      return ApiResponse.success(res, { successCount: 0, errorCount: 0 }, "Không có lỗi in nhãn cần retry.");
+    }
+
+    const refsForPrint = [
+      ...new Set(errors.map((e) => e.ReferenceNo).filter(Boolean)),
+    ];
+    const orderMetaByRef = await buildOrderMetaFromErrors(errors);
+
+    const { printErrors, successCount, errorCount } = await printLabelsBatched(
+      refsForPrint,
+      orderMetaByRef,
+      userId,
+      [],
+    );
+
+    const messages =
+      errorCount > 0
+        ? `Retry thành công ${successCount} đơn. Còn lỗi ${errorCount} đơn.`
+        : `Retry thành công ${successCount} đơn.`;
+
+    return ApiResponse.send(res, 200, {
+      messages,
+      errorMessages:
+        errorCount > 0
+          ? printErrors.map(
+              (e) => `${e.referenceNo || e.orderId}: ${e.errorMessage}`,
+            )
+          : null,
+      data: { successCount, errorCount },
+    });
+  } catch (err) {
+    console.error("Admin retry print errors:", err);
+    return ApiResponse.serverError(res, "Có lỗi xảy ra khi retry in nhãn.");
+  }
+};
+
+const retryPrintByRef = async (req, res) => {
+  const userId = req.user.username;
+  const { referenceNo, trackingNo } = req.body || {};
+
+  if (
+    (!referenceNo || String(referenceNo).trim() === "") &&
+    (!trackingNo || String(trackingNo).trim() === "")
+  ) {
+    return ApiResponse.badRequest(
+      res,
+      "Vui lòng nhập Reference No hoặc Tracking No.",
+    );
+  }
+
+  try {
+    const { mappings, refsForPrint } = await lookupMappingsByRefOrTracking(
+      referenceNo,
+      trackingNo,
+    );
+
+    if (!refsForPrint.length) {
+      return ApiResponse.notFound(
+        res,
+        "Không tìm thấy mapping cho Reference No / Tracking No đã nhập.",
+      );
+    }
+
+    const orderMetaByRef = await buildOrderMetaFromMappings(mappings);
+
+    const { printErrors, successCount, errorCount } = await printLabelsBatched(
+      refsForPrint,
+      orderMetaByRef,
+      userId,
+      [],
+    );
+
+    const messages =
+      errorCount > 0
+        ? `Retry thành công ${successCount} đơn. Lỗi ${errorCount} đơn.`
+        : `Retry thành công ${successCount} đơn.`;
+
+    return ApiResponse.send(res, 200, {
+      messages,
+      errorMessages:
+        errorCount > 0
+          ? printErrors.map(
+              (e) => `${e.referenceNo || e.orderId}: ${e.errorMessage}`,
+            )
+          : null,
+      data: { successCount, errorCount, refsForPrint },
+    });
+  } catch (err) {
+    console.error("Retry print by ref:", err);
+    return ApiResponse.serverError(res, "Có lỗi xảy ra khi retry in nhãn.");
+  }
+};
+
 module.exports = {
   importEtowerLabels,
   getEtowerLabels,
@@ -849,6 +946,9 @@ module.exports = {
   downloadEtowerLabelsZip,
   exportEtowerExcel,
   deleteEtowerOrders,
+  getPrintErrors,
+  retryAdminPrintErrors,
+  retryPrintByRef,
 };
 
 const fs = require("fs");

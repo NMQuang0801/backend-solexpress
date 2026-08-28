@@ -4,8 +4,9 @@ import { useTableSelection, useTableSort } from '@/hooks';
 import { getErrorMessages } from '@/types/response';
 import { TablePagination } from '@/components';
 import { Label, LabelsResponse } from '@/types/label';
+import { IUser } from '@/types/user';
 import moment from 'moment';
-import React, { Dispatch, useEffect, useState } from 'react';
+import React, { Dispatch, useEffect, useMemo, useState } from 'react';
 import { Button, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
 import { EtowerTableColumns } from '../types';
 
@@ -24,6 +25,18 @@ const EtowerTable = ({ isImported, setIsImported }: EtowerTableProps) => {
   const [referenceNo, setReferenceNo] = useState('');
   const [trackingNo, setTrackingNo] = useState('');
   const [total, setTotal] = useState(0);
+  const [printErrorCount, setPrintErrorCount] = useState(0);
+
+  const currentUser = useMemo<IUser | null>(() => {
+    const userStr = localStorage.getItem('user');
+    if (!userStr) return null;
+    try {
+      return JSON.parse(userStr) as IUser;
+    } catch {
+      return null;
+    }
+  }, []);
+  const isAdmin = currentUser?.role === 'admin';
 
   const { sortField, isDesc, handleSort, resetSort } = useTableSort();
   const { selectedIds, isAllSelected, toggleSelect, toggleSelectAll, clearSelection } =
@@ -51,6 +64,23 @@ const EtowerTable = ({ isImported, setIsImported }: EtowerTableProps) => {
     fetchLabels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageIndex, pageSize, sortField, isDesc]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      fetchPrintErrorCount();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, isImported]);
+
+  const fetchPrintErrorCount = async () => {
+    try {
+      const service = etowerLabelsService();
+      const response = await service.getPrintErrors();
+      setPrintErrorCount(response.data?.data?.total || 0);
+    } catch {
+      setPrintErrorCount(0);
+    }
+  };
 
   const getFilters = () => ({
     dateFrom: dateFrom.trim() || undefined,
@@ -234,6 +264,54 @@ const EtowerTable = ({ isImported, setIsImported }: EtowerTableProps) => {
     }
   };
 
+  const handleRetryPrintByRef = async () => {
+    if (!referenceNo.trim() && !trackingNo.trim()) {
+      showAlert('error', 'Vui lòng nhập Reference No hoặc Tracking No để retry in nhãn.');
+      return;
+    }
+
+    showLoading();
+    try {
+      const service = etowerLabelsService();
+      const response = await service.retryPrintByRef(
+        referenceNo.trim() || undefined,
+        trackingNo.trim() || undefined
+      );
+      showAlert('success', response.data?.messages || 'Retry in nhãn thành công.');
+      fetchLabels(pageIndex);
+      if (isAdmin) fetchPrintErrorCount();
+    } catch (error) {
+      console.error('Error retrying print by ref:', error);
+      showAlert('error', getErrorMessages(error, 'Có lỗi xảy ra khi retry in nhãn'));
+    } finally {
+      hideLoading();
+    }
+  };
+
+  const handleAdminRetryErrors = async () => {
+    if (printErrorCount === 0) {
+      showAlert('error', 'Không có lỗi in nhãn cần retry.');
+      return;
+    }
+
+    const confirmed = window.confirm(`Bạn có chắc muốn retry ${printErrorCount} đơn lỗi in nhãn?`);
+    if (!confirmed) return;
+
+    showLoading();
+    try {
+      const service = etowerLabelsService();
+      const response = await service.retryAdminPrintErrors();
+      showAlert('success', response.data?.messages || 'Retry lỗi in nhãn thành công.');
+      fetchLabels(pageIndex);
+      fetchPrintErrorCount();
+    } catch (error) {
+      console.error('Error retrying admin print errors:', error);
+      showAlert('error', getErrorMessages(error, 'Có lỗi xảy ra khi retry lỗi in nhãn'));
+    } finally {
+      hideLoading();
+    }
+  };
+
   if (loading) {
     return (
       <Row className="justify-content-center">
@@ -313,12 +391,31 @@ const EtowerTable = ({ isImported, setIsImported }: EtowerTableProps) => {
               >
                 Reset
               </button>
+              <button
+                type="button"
+                className="btn btn-outline-warning btn-sm"
+                onClick={handleRetryPrintByRef}
+              >
+                <i className="bi bi-arrow-repeat me-1" />
+                Retry in nhãn
+              </button>
             </div>
           </Col>
         </Row>
       </div>
       <Row className="mb-2">
-        <Col className="d-flex justify-content-end gap-2">
+        <Col className="d-flex justify-content-end gap-2 flex-wrap">
+          {isAdmin && (
+            <button
+              type="button"
+              className="btn btn-sm btn-warning"
+              disabled={printErrorCount === 0}
+              onClick={handleAdminRetryErrors}
+            >
+              <i className="bi bi-arrow-clockwise me-1" />
+              {`Retry lỗi in nhãn (${printErrorCount})`}
+            </button>
+          )}
           <button
             type="button"
             className="btn btn-sm btn-danger"

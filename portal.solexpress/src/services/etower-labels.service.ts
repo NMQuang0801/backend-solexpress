@@ -15,7 +15,7 @@ const etowerLabelsService = () => {
           'Content-Type': 'multipart/form-data',
           Authorization: `Bearer ${token}`,
         },
-        timeout: 60000,
+        timeout: 600000,
       }
     );
   };
@@ -109,6 +109,46 @@ const etowerLabelsService = () => {
     );
   };
 
+  const getPrintErrors = () => {
+    const token = localStorage.getItem('token');
+
+    return axiosInstance.get(`${process.env.REACT_APP_API_URL}/api/etower-labels/print-errors`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  };
+
+  const retryAdminPrintErrors = () => {
+    const token = localStorage.getItem('token');
+
+    return axiosInstance.post(
+      `${process.env.REACT_APP_API_URL}/api/etower-labels/retry-errors`,
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        timeout: 600000,
+      }
+    );
+  };
+
+  const retryPrintByRef = (referenceNo?: string, trackingNo?: string) => {
+    const token = localStorage.getItem('token');
+
+    return axiosInstance.post(
+      `${process.env.REACT_APP_API_URL}/api/etower-labels/retry-print`,
+      { referenceNo, trackingNo },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        timeout: 600000,
+      }
+    );
+  };
+
   return {
     importLabels,
     getLabels,
@@ -116,6 +156,9 @@ const etowerLabelsService = () => {
     downloadLabelsZip,
     exportExcel,
     deleteOrders,
+    getPrintErrors,
+    retryAdminPrintErrors,
+    retryPrintByRef,
   };
 };
 

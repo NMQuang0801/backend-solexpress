@@ -1,9 +1,7 @@
 name: Deploy to cPanel
 
+# Chỉ chạy khi bấm "Run workflow" trên GitHub Actions
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 concurrency:
@@ -19,6 +17,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Record build meta
+        id: meta
+        run: |
+          echo "started_at=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_OUTPUT"
+          echo "branch=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          echo "actor=${GITHUB_ACTOR}" >> "$GITHUB_OUTPUT"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -29,10 +34,15 @@ jobs:
             portal.solexpress/package-lock.json
 
       - name: Install frontend dependencies
+        id: fe_install
+        continue-on-error: true
         working-directory: portal.solexpress
         run: npm ci
 
       - name: Build frontend
+        id: fe_build
+        continue-on-error: true
+        if: steps.fe_install.outcome == 'success'
         working-directory: portal.solexpress
         env:
           REACT_APP_API_URL: ${{ secrets.REACT_APP_API_URL }}
@@ -40,6 +50,9 @@ jobs:
         run: npm run build
 
       - name: Prepare deploy packages
+        id: prepare
+        continue-on-error: true
+        if: steps.fe_build.outcome == 'success'
         run: |
           mkdir -p deploy/backend deploy/frontend
 
@@ -55,6 +68,9 @@ jobs:
           rsync -a portal.solexpress/build/ deploy/frontend/
 
       - name: Upload backend to server
+        id: be_upload
+        continue-on-error: true
+        if: steps.prepare.outcome == 'success'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -67,6 +83,9 @@ jobs:
           rm: true
 
       - name: Upload frontend to server
+        id: fe_upload
+        continue-on-error: true
+        if: steps.prepare.outcome == 'success'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -78,6 +97,9 @@ jobs:
           overwrite: true
 
       - name: Sync files, npm install & restart app
+        id: be_sync
+        continue-on-error: true
+        if: steps.be_upload.outcome == 'success' && steps.fe_upload.outcome == 'success'
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -116,3 +138,126 @@ jobs:
 
             rm -rf /tmp/solexpress-ci
             echo "Deploy finished at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Evaluate results
+        id: result
+        if: always()
+        run: |
+          FE_OK=false
+          BE_OK=false
+          ERRORS=""
+
+          if [ "${{ steps.fe_install.outcome }}" = "success" ] && [ "${{ steps.fe_build.outcome }}" = "success" ] && [ "${{ steps.fe_upload.outcome }}" = "success" ]; then
+            FE_OK=true
+          else
+            if [ "${{ steps.fe_install.outcome }}" = "failure" ]; then
+              ERRORS="${ERRORS}- Frontend: npm ci thất bại"$'\n'
+            elif [ "${{ steps.fe_build.outcome }}" = "failure" ]; then
+              ERRORS="${ERRORS}- Frontend: build thất bại"$'\n'
+            elif [ "${{ steps.fe_upload.outcome }}" = "failure" ]; then
+              ERRORS="${ERRORS}- Frontend: upload SCP thất bại"$'\n'
+            elif [ "${{ steps.fe_build.outcome }}" = "skipped" ]; then
+              ERRORS="${ERRORS}- Frontend: bị bỏ qua (bước trước lỗi)"$'\n'
+            fi
+          fi
+
+          if [ "${{ steps.be_upload.outcome }}" = "success" ] && [ "${{ steps.be_sync.outcome }}" = "success" ]; then
+            BE_OK=true
+          else
+            if [ "${{ steps.be_upload.outcome }}" = "failure" ]; then
+              ERRORS="${ERRORS}- Backend: upload SCP thất bại"$'\n'
+            elif [ "${{ steps.be_sync.outcome }}" = "failure" ]; then
+              ERRORS="${ERRORS}- Backend: sync / npm install / restart thất bại"$'\n'
+            elif [ "${{ steps.prepare.outcome }}" = "failure" ]; then
+              ERRORS="${ERRORS}- Backend: chuẩn bị package thất bại"$'\n'
+            elif [ "${{ steps.be_sync.outcome }}" = "skipped" ] || [ "${{ steps.be_upload.outcome }}" = "skipped" ]; then
+              ERRORS="${ERRORS}- Backend: bị bỏ qua (bước trước lỗi)"$'\n'
+            fi
+          fi
+
+          if [ -z "$ERRORS" ]; then
+            ERRORS="Không có"
+          fi
+
+          {
+            echo "fe_ok=$FE_OK"
+            echo "be_ok=$BE_OK"
+            echo "errors<<EOF"
+            echo "$ERRORS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ "$FE_OK" = "true" ] && [ "$BE_OK" = "true" ]; then
+            echo "overall=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "overall=failure" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Notify Telegram
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BRANCH: ${{ steps.meta.outputs.branch }}
+          ACTOR: ${{ steps.meta.outputs.actor }}
+          STARTED_AT: ${{ steps.meta.outputs.started_at }}
+          FE_OK: ${{ steps.result.outputs.fe_ok }}
+          BE_OK: ${{ steps.result.outputs.be_ok }}
+          OVERALL: ${{ steps.result.outputs.overall }}
+          ERRORS: ${{ steps.result.outputs.errors }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          FINISHED_AT=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
+
+          if [ "$OVERALL" = "success" ]; then
+            TITLE="✅ Deploy THÀNH CÔNG"
+          else
+            TITLE="❌ Deploy THẤT BẠI"
+          fi
+
+          if [ "$FE_OK" = "true" ]; then
+            FE_STATUS="✅ Thành công"
+          else
+            FE_STATUS="❌ Thất bại"
+          fi
+
+          if [ "$BE_OK" = "true" ]; then
+            BE_STATUS="✅ Thành công"
+          else
+            BE_STATUS="❌ Thất bại"
+          fi
+
+          # Escape HTML special chars for Telegram
+          ERRORS_ESCAPED=$(printf '%s' "$ERRORS" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+
+          MESSAGE=$(cat <<EOF
+          <b>${TITLE}</b>
+
+          <b>Nhánh:</b> <code>${BRANCH}</code>
+          <b>Người chạy:</b> <code>${ACTOR}</code>
+          <b>Bắt đầu:</b> <code>${STARTED_AT}</code>
+          <b>Kết thúc:</b> <code>${FINISHED_AT}</code>
+
+          <b>Frontend:</b> ${FE_STATUS}
+          <b>Backend:</b> ${BE_STATUS}
+
+          <b>Lỗi:</b>
+          <pre>${ERRORS_ESCAPED}</pre>
+
+          <a href="${RUN_URL}">Xem chi tiết trên GitHub Actions</a>
+          EOF
+          )
+
+          # trim leading spaces from heredoc indentation
+          MESSAGE=$(printf '%s' "$MESSAGE" | sed 's/^[[:space:]]*//')
+
+          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode="HTML" \
+            --data-urlencode text="${MESSAGE}"
+
+      - name: Fail job if deploy incomplete
+        if: always() && steps.result.outputs.overall != 'success'
+        run: |
+          echo "Deploy thất bại — xem Telegram / log Actions"
+          exit 1

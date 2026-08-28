@@ -167,64 +167,76 @@ jobs:
             "-o", "IdentitiesOnly=yes",
             "-o", "StrictHostKeyChecking=accept-new",
             "-o", "ConnectTimeout=20",
+            "-o", "ServerAliveInterval=15",
+            "-o", "ServerAliveCountMax=6",
             "-p", $port
           )
           if (-not $useAgent) { $sshBase += @("-i", $keyFile) }
 
-          Write-Host "==> SSH test"
-          & ssh @sshBase $remote "mkdir -p '$remoteDir' && echo SSH_OK"
-          if ($LASTEXITCODE -ne 0) {
-            throw "SSH that bai. Kiem tra passphrase / Authorize public key / firewall."
-          }
+          # Tai su dung 1 TCP SSH (tranh firewall CSF cat nhieu connection)
+          $controlPath = Join-Path $sshDir "cm-%C"
+          $mux = @(
+            "-o", "ControlMaster=auto",
+            "-o", "ControlPath=$controlPath",
+            "-o", "ControlPersist=180"
+          )
 
-          Write-Host "==> Upload archive"
+          $be = $env:BE_REMOTE_PATH.TrimEnd('/')
+          $fe = $env:FE_REMOTE_PATH.TrimEnd('/')
+          $venv = $env:NODE_VENV_PATH
+
+          $deploySh = Join-Path $sshDir "deploy-remote.sh"
+          $deployLines = @(
+            '#!/bin/bash',
+            'set -euo pipefail',
+            "BE_PATH='$be'",
+            "FE_PATH='$fe'",
+            "NODE_VENV='$venv'",
+            "CI_DIR='$remoteDir'",
+            'echo "==> extract"',
+            'mkdir -p "$CI_DIR/extract"',
+            'tar -xzf "$CI_DIR/solexpress-deploy.tar.gz" -C "$CI_DIR/extract"',
+            'echo "==> sync backend/frontend"',
+            'mkdir -p "$BE_PATH" "$FE_PATH"',
+            'cp -R "$CI_DIR/extract/backend/." "$BE_PATH/"',
+            'cp -R "$CI_DIR/extract/frontend/." "$FE_PATH/"',
+            'echo "==> npm install"',
+            'cd "$BE_PATH"',
+            'if [ -n "$NODE_VENV" ] && [ -f "$NODE_VENV/bin/activate" ]; then source "$NODE_VENV/bin/activate"; fi',
+            'npm install --production --omit=dev',
+            'echo "==> restart passenger"',
+            'mkdir -p "$BE_PATH/tmp"',
+            'touch "$BE_PATH/tmp/restart.txt"',
+            'rm -rf "$CI_DIR/extract" "$CI_DIR/solexpress-deploy.tar.gz" "$CI_DIR/deploy-remote.sh"',
+            'echo Deploy finished OK'
+          )
+          [System.IO.File]::WriteAllText($deploySh, (($deployLines -join "`n") + "`n"))
+
+          Write-Host "==> Open SSH master + mkdir"
+          & ssh @sshBase @mux $remote "mkdir -p '$remoteDir'"
+          if ($LASTEXITCODE -ne 0) { throw "SSH mkdir failed" }
+
+          Write-Host "==> Upload archive + deploy script"
           $scpArgs = @(
             "-o", "BatchMode=yes",
             "-o", "IdentitiesOnly=yes",
             "-o", "StrictHostKeyChecking=accept-new",
             "-o", "ConnectTimeout=20",
+            "-o", "ControlMaster=auto",
+            "-o", "ControlPath=$controlPath",
+            "-o", "ControlPersist=180",
             "-P", $port
           )
           if (-not $useAgent) { $scpArgs += @("-i", $keyFile) }
-          & scp @scpArgs "solexpress-deploy.tar.gz" "${remote}:${remoteDir}/solexpress-deploy.tar.gz"
+          & scp @scpArgs "solexpress-deploy.tar.gz" $deploySh "${remote}:${remoteDir}/"
           if ($LASTEXITCODE -ne 0) { throw "SCP upload failed" }
 
-          $be = $env:BE_REMOTE_PATH
-          $fe = $env:FE_REMOTE_PATH
-          $venv = $env:NODE_VENV_PATH
-
-          $remoteScript = @"
-          set -e
-          BE_PATH='$be'
-          FE_PATH='$fe'
-          NODE_VENV='$venv'
-          CI_DIR=`$HOME/solexpress-ci
-          mkdir -p "`$CI_DIR/extract"
-          tar -xzf "`$CI_DIR/solexpress-deploy.tar.gz" -C "`$CI_DIR/extract"
-          mkdir -p "`$BE_PATH" "`$FE_PATH"
-          if command -v rsync >/dev/null 2>&1; then
-            rsync -a --exclude '.env' --exclude '.env.*' --exclude 'node_modules' --exclude 'src/logs' "`$CI_DIR/extract/backend/" "`$BE_PATH/"
-            rsync -a "`$CI_DIR/extract/frontend/" "`$FE_PATH/"
-          else
-            cp -R "`$CI_DIR/extract/backend/." "`$BE_PATH/"
-            cp -R "`$CI_DIR/extract/frontend/." "`$FE_PATH/"
-          fi
-          cd "`$BE_PATH"
-          if [ -n "`$NODE_VENV" ] && [ -f "`$NODE_VENV/bin/activate" ]; then
-            source "`$NODE_VENV/bin/activate"
-          fi
-          npm install --production --omit=dev
-          mkdir -p "`$BE_PATH/tmp"
-          touch "`$BE_PATH/tmp/restart.txt"
-          rm -rf "`$CI_DIR"
-          echo Deploy finished OK
-          "@
-
-          $remoteScript = $remoteScript -replace "`r`n", "`n"
-
-          Write-Host "==> Extract, sync, npm install, restart"
-          $remoteScript | & ssh @sshBase $remote "bash -s"
+          Write-Host "==> Run remote deploy script"
+          & ssh @sshBase @mux $remote "bash '$remoteDir/deploy-remote.sh'"
           if ($LASTEXITCODE -ne 0) { throw "Remote deploy script failed" }
+
+          Write-Host "==> Close SSH master"
+          & ssh @sshBase @mux -O exit $remote 2>$null
 
           Write-Host "Deploy pipeline OK"
 

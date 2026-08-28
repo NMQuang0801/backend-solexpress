@@ -1,0 +1,118 @@
+name: Deploy to cPanel
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: npm
+          cache-dependency-path: |
+            backend.solexpress/package-lock.json
+            portal.solexpress/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: portal.solexpress
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: portal.solexpress
+        env:
+          REACT_APP_API_URL: ${{ secrets.REACT_APP_API_URL }}
+          CI: false
+        run: npm run build
+
+      - name: Prepare deploy packages
+        run: |
+          mkdir -p deploy/backend deploy/frontend
+
+          rsync -a \
+            --exclude 'node_modules' \
+            --exclude '.env' \
+            --exclude '.env.*' \
+            --exclude 'src/logs' \
+            --exclude '*.zip' \
+            --exclude '.vscode' \
+            backend.solexpress/ deploy/backend/
+
+          rsync -a portal.solexpress/build/ deploy/frontend/
+
+      - name: Upload backend to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "deploy/backend"
+          target: "/tmp/solexpress-ci"
+          overwrite: true
+          rm: true
+
+      - name: Upload frontend to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "deploy/frontend"
+          target: "/tmp/solexpress-ci"
+          overwrite: true
+
+      - name: Sync files, npm install & restart app
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+
+            BE_PATH="${{ secrets.BE_REMOTE_PATH }}"
+            FE_PATH="${{ secrets.FE_REMOTE_PATH }}"
+            NODE_VENV="${{ secrets.NODE_VENV_PATH }}"
+
+            echo "==> Sync backend (keep .env & node_modules)"
+            rsync -a \
+              --exclude '.env' \
+              --exclude '.env.*' \
+              --exclude 'node_modules' \
+              --exclude 'src/logs' \
+              /tmp/solexpress-ci/deploy/backend/ "$BE_PATH/"
+
+            echo "==> Sync frontend"
+            rsync -a /tmp/solexpress-ci/deploy/frontend/ "$FE_PATH/"
+
+            echo "==> Install backend dependencies"
+            cd "$BE_PATH"
+            if [ -n "$NODE_VENV" ] && [ -f "$NODE_VENV/bin/activate" ]; then
+              # shellcheck disable=SC1090
+              source "$NODE_VENV/bin/activate"
+            fi
+            npm install --production --omit=dev
+
+            echo "==> Restart Node.js app (Passenger)"
+            mkdir -p "$BE_PATH/tmp"
+            touch "$BE_PATH/tmp/restart.txt"
+
+            rm -rf /tmp/solexpress-ci
+            echo "Deploy finished at $(date -u +%Y-%m-%dT%H:%M:%SZ)"

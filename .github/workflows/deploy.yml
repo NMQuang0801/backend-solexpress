@@ -23,6 +23,9 @@ jobs:
           echo "started_at=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_OUTPUT"
           echo "branch=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           echo "actor=${GITHUB_ACTOR}" >> "$GITHUB_OUTPUT"
+          PORT="${{ secrets.SSH_PORT }}"
+          if [ -z "$PORT" ]; then PORT=22; fi
+          echo "ssh_port=$PORT" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -67,62 +70,86 @@ jobs:
 
           rsync -a portal.solexpress/build/ deploy/frontend/
 
-      - name: Upload backend to server
-        id: be_upload
+          # 1 file duy nhất → ít kết nối SSH hơn (tránh firewall cPanel chặn)
+          tar -czf solexpress-deploy.tar.gz -C deploy backend frontend
+          ls -lh solexpress-deploy.tar.gz
+
+      - name: Test SSH connectivity
+        id: ssh_test
         continue-on-error: true
         if: steps.prepare.outcome == 'success'
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ secrets.SSH_PORT }}
-          source: "deploy/backend"
-          target: "/tmp/solexpress-ci"
-          overwrite: true
-          rm: true
-
-      - name: Upload frontend to server
-        id: fe_upload
-        continue-on-error: true
-        if: steps.prepare.outcome == 'success'
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ secrets.SSH_PORT }}
-          source: "deploy/frontend"
-          target: "/tmp/solexpress-ci"
-          overwrite: true
-
-      - name: Sync files, npm install & restart app
-        id: be_sync
-        continue-on-error: true
-        if: steps.be_upload.outcome == 'success' && steps.fe_upload.outcome == 'success'
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ secrets.SSH_PORT }}
+          port: ${{ steps.meta.outputs.ssh_port }}
+          timeout: 60s
+          command_timeout: 30s
+          script: |
+            set -e
+            echo "SSH OK as $(whoami) on $(hostname)"
+            echo "Home=$HOME"
+            mkdir -p "$HOME/solexpress-ci"
+            touch "$HOME/solexpress-ci/.write-test"
+            rm -f "$HOME/solexpress-ci/.write-test"
+            command -v rsync >/dev/null || echo "WARN: rsync missing"
+            command -v tar >/dev/null
+            test -d "${{ secrets.BE_REMOTE_PATH }}" || echo "WARN: BE_REMOTE_PATH not found: ${{ secrets.BE_REMOTE_PATH }}"
+            test -d "${{ secrets.FE_REMOTE_PATH }}" || echo "WARN: FE_REMOTE_PATH not found: ${{ secrets.FE_REMOTE_PATH }}"
+
+      - name: Upload deploy archive (single SCP)
+        id: upload
+        continue-on-error: true
+        if: steps.ssh_test.outcome == 'success'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ steps.meta.outputs.ssh_port }}
+          source: "solexpress-deploy.tar.gz"
+          target: "~/solexpress-ci"
+          overwrite: true
+          timeout: 120s
+          command_timeout: 10m
+
+      - name: Extract, sync, npm install & restart
+        id: sync
+        continue-on-error: true
+        if: steps.upload.outcome == 'success'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ steps.meta.outputs.ssh_port }}
+          timeout: 60s
+          command_timeout: 20m
           script: |
             set -e
 
             BE_PATH="${{ secrets.BE_REMOTE_PATH }}"
             FE_PATH="${{ secrets.FE_REMOTE_PATH }}"
             NODE_VENV="${{ secrets.NODE_VENV_PATH }}"
+            CI_DIR="$HOME/solexpress-ci"
+
+            echo "==> Extract archive"
+            mkdir -p "$CI_DIR/extract"
+            tar -xzf "$CI_DIR/solexpress-deploy.tar.gz" -C "$CI_DIR/extract"
 
             echo "==> Sync backend (keep .env & node_modules)"
+            mkdir -p "$BE_PATH"
             rsync -a \
               --exclude '.env' \
               --exclude '.env.*' \
               --exclude 'node_modules' \
               --exclude 'src/logs' \
-              /tmp/solexpress-ci/deploy/backend/ "$BE_PATH/"
+              "$CI_DIR/extract/backend/" "$BE_PATH/"
 
             echo "==> Sync frontend"
-            rsync -a /tmp/solexpress-ci/deploy/frontend/ "$FE_PATH/"
+            mkdir -p "$FE_PATH"
+            rsync -a "$CI_DIR/extract/frontend/" "$FE_PATH/"
 
             echo "==> Install backend dependencies"
             cd "$BE_PATH"
@@ -136,7 +163,7 @@ jobs:
             mkdir -p "$BE_PATH/tmp"
             touch "$BE_PATH/tmp/restart.txt"
 
-            rm -rf /tmp/solexpress-ci
+            rm -rf "$CI_DIR"
             echo "Deploy finished at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
       - name: Evaluate results
@@ -147,35 +174,21 @@ jobs:
           BE_OK=false
           ERRORS=""
 
-          if [ "${{ steps.fe_install.outcome }}" = "success" ] && [ "${{ steps.fe_build.outcome }}" = "success" ] && [ "${{ steps.fe_upload.outcome }}" = "success" ]; then
+          if [ "${{ steps.fe_install.outcome }}" != "success" ]; then
+            ERRORS="- Frontend: npm ci thất bại"
+          elif [ "${{ steps.fe_build.outcome }}" != "success" ]; then
+            ERRORS="- Frontend: build thất bại"
+          elif [ "${{ steps.prepare.outcome }}" != "success" ]; then
+            ERRORS="- Chuẩn bị package thất bại"
+          elif [ "${{ steps.ssh_test.outcome }}" != "success" ]; then
+            ERRORS="- SSH kết nối thất bại (sai host/user/password/port, hoặc firewall chặn GitHub Actions)"
+          elif [ "${{ steps.upload.outcome }}" != "success" ]; then
+            ERRORS="- Upload archive thất bại (SCP/firewall/quota)"
+          elif [ "${{ steps.sync.outcome }}" != "success" ]; then
+            ERRORS="- Sync/npm install/restart thất bại trên server"
+          else
             FE_OK=true
-          else
-            if [ "${{ steps.fe_install.outcome }}" = "failure" ]; then
-              ERRORS="${ERRORS}- Frontend: npm ci thất bại"$'\n'
-            elif [ "${{ steps.fe_build.outcome }}" = "failure" ]; then
-              ERRORS="${ERRORS}- Frontend: build thất bại"$'\n'
-            elif [ "${{ steps.fe_upload.outcome }}" = "failure" ]; then
-              ERRORS="${ERRORS}- Frontend: upload SCP thất bại"$'\n'
-            elif [ "${{ steps.fe_build.outcome }}" = "skipped" ]; then
-              ERRORS="${ERRORS}- Frontend: bị bỏ qua (bước trước lỗi)"$'\n'
-            fi
-          fi
-
-          if [ "${{ steps.be_upload.outcome }}" = "success" ] && [ "${{ steps.be_sync.outcome }}" = "success" ]; then
             BE_OK=true
-          else
-            if [ "${{ steps.be_upload.outcome }}" = "failure" ]; then
-              ERRORS="${ERRORS}- Backend: upload SCP thất bại"$'\n'
-            elif [ "${{ steps.be_sync.outcome }}" = "failure" ]; then
-              ERRORS="${ERRORS}- Backend: sync / npm install / restart thất bại"$'\n'
-            elif [ "${{ steps.prepare.outcome }}" = "failure" ]; then
-              ERRORS="${ERRORS}- Backend: chuẩn bị package thất bại"$'\n'
-            elif [ "${{ steps.be_sync.outcome }}" = "skipped" ] || [ "${{ steps.be_upload.outcome }}" = "skipped" ]; then
-              ERRORS="${ERRORS}- Backend: bị bỏ qua (bước trước lỗi)"$'\n'
-            fi
-          fi
-
-          if [ -z "$ERRORS" ]; then
             ERRORS="Không có"
           fi
 
@@ -227,7 +240,6 @@ jobs:
             BE_STATUS="❌ Thất bại"
           fi
 
-          # Escape HTML special chars for Telegram
           ERRORS_ESCAPED=$(printf '%s' "$ERRORS" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
 
           MESSAGE=$(cat <<EOF
@@ -248,7 +260,6 @@ jobs:
           EOF
           )
 
-          # trim leading spaces from heredoc indentation
           MESSAGE=$(printf '%s' "$MESSAGE" | sed 's/^[[:space:]]*//')
 
           curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \

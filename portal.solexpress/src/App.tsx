@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import './assets/css/global.scss';
-import Layout from './components/Layout/Layout';
+import { Layout } from './components';
 import { Error, Home, Cirro, Login, Etower } from './pages';
 
 const App = () => {

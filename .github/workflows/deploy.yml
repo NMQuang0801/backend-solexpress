@@ -93,16 +93,24 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          # Viet key vao temp cua runner (tranh Access denied o ~/.ssh)
-          $sshDir = Join-Path $env:RUNNER_TEMP "solexpress-ssh"
+          # Ten file tam tren may runner (KHONG phai ten key cPanel).
+          # Noi dung key lay tu secret SSH_PRIVATE_KEY (= private key github_ci).
+          $sshDir = Join-Path $env:RUNNER_TEMP "solexpress-ssh-$env:GITHUB_RUN_ID"
           New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
-          $keyFile = Join-Path $sshDir "github_actions_deploy_key"
+          $keyFile = Join-Path $sshDir "github_ci"
+
+          if ([string]::IsNullOrWhiteSpace($env:SSH_PRIVATE_KEY)) {
+            throw "Secret SSH_PRIVATE_KEY trong. Hay paste private key github_ci vao GitHub Secrets."
+          }
 
           $key = ($env:SSH_PRIVATE_KEY -replace "`r", "").Trim() + "`n"
           [System.IO.File]::WriteAllText($keyFile, $key)
 
+          # Chi sau khi ghi xong moi siet ACL (tranh Access denied lan sau)
           icacls $keyFile /inheritance:r | Out-Null
           icacls $keyFile /grant:r "$($env:USERNAME):(R)" | Out-Null
+
+          Write-Host "Using temp key file: $keyFile"
 
           $hostName = $env:SSH_HOST
           $user = $env:SSH_USERNAME

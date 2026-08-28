@@ -4,6 +4,11 @@ name: Deploy to cPanel
 # Chạy trên máy bạn (self-hosted Windows) vì firewall cPanel chặn IP GitHub Actions
 on:
   workflow_dispatch:
+    inputs:
+      note:
+        description: "Ghi chu (khong bat buoc)"
+        required: false
+        default: "manual deploy"
 
 concurrency:
   group: deploy-production

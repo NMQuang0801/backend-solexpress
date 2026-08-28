@@ -81,6 +81,7 @@ jobs:
           SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
           SSH_PORT: ${{ steps.meta.outputs.ssh_port }}
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KEY_PASSPHRASE: ${{ secrets.SSH_KEY_PASSPHRASE }}
           BE_REMOTE_PATH: ${{ secrets.BE_REMOTE_PATH }}
           FE_REMOTE_PATH: ${{ secrets.FE_REMOTE_PATH }}
           NODE_VENV_PATH: ${{ secrets.NODE_VENV_PATH }}
@@ -97,42 +98,87 @@ jobs:
           icacls $keyFile /inheritance:r | Out-Null
           icacls $keyFile /grant:r "$($env:USERNAME):(R)" | Out-Null
 
-          # Key co passphrase se lam CI TREO. Bat buoc dung key KHONG passphrase.
-          if ($key -match "ENCRYPTED|Proc-Type:\s*4,ENCRYPTED|bcrypt") {
-            throw @"
-Private key dang bi khoa bang passphrase.
-Tren Windows runner, ssh-add se TREO cho nhap tay.
-
-Cach fix (2 phut):
-1) cPanel -> SSH Access -> Manage SSH Keys -> Generate
-2) Key Name: github_ci
-3) Key Password: DE TRONG
-4) Authorize key
-5) Download Private Key -> paste vao secret SSH_PRIVATE_KEY
-6) Xoa secret SSH_KEY_PASSPHRASE (neu co)
-"@
-          }
-
           $hostName = $env:SSH_HOST
           $user = $env:SSH_USERNAME
           $port = $env:SSH_PORT
           $remote = "${user}@${hostName}"
           $remoteDir = "/home/${user}/solexpress-ci"
+          $passphrase = $env:SSH_KEY_PASSPHRASE
 
-          # BatchMode=yes: khong hoi passphrase/password -> fail nhanh, khong treo
+          $keyEncrypted = $key -match "ENCRYPTED|Proc-Type:\s*4,ENCRYPTED|bcrypt"
+          $useAgent = $false
+
+          if ($keyEncrypted) {
+            if ([string]::IsNullOrWhiteSpace($passphrase)) {
+              throw @"
+Private key co passphrase nhung secret SSH_KEY_PASSPHRASE dang trong.
+Them secret SSH_KEY_PASSPHRASE = mat khau key tren cPanel.
+HOAC tao key tren may (khong pass) roi Import public key len cPanel (xem huong dan).
+"@
+            }
+
+            Write-Host "==> Unlock key bang SSH_ASKPASS (khong treo)"
+            $svc = Get-Service ssh-agent -ErrorAction SilentlyContinue
+            if ($null -eq $svc) {
+              throw "Thieu ssh-agent service. Bat OpenSSH Authentication Agent trong Services."
+            }
+            if ($svc.StartType -eq "Disabled") {
+              throw "ssh-agent dang Disabled. Chay (Admin): Set-Service ssh-agent -StartupType Manual; Start-Service ssh-agent"
+            }
+            if ($svc.Status -ne "Running") { Start-Service ssh-agent }
+
+            # askpass.cmd: OpenSSH goi khi stdin khong phai TTY
+            $askpass = Join-Path $sshDir "github_askpass.cmd"
+            $passFile = Join-Path $sshDir "github_askpass_secret.txt"
+            [System.IO.File]::WriteAllText($passFile, $passphrase)
+            icacls $passFile /inheritance:r | Out-Null
+            icacls $passFile /grant:r "$($env:USERNAME):(R)" | Out-Null
+            [System.IO.File]::WriteAllText($askpass, "@echo off`r`ntype `"$passFile`"`r`n")
+
+            $env:DISPLAY = "1"
+            $env:SSH_ASKPASS = $askpass
+            $env:SSH_ASKPASS_REQUIRE = "force"
+
+            $nul = Join-Path $env:TEMP "ssh_add_nul.txt"
+            Set-Content -Path $nul -Value ""
+            $p = Start-Process -FilePath "ssh-add.exe" -ArgumentList "`"$keyFile`"" `
+              -NoNewWindow -Wait -PassThru `
+              -RedirectStandardInput $nul `
+              -RedirectStandardOutput (Join-Path $env:TEMP "ssh_add_out.txt") `
+              -RedirectStandardError (Join-Path $env:TEMP "ssh_add_err.txt")
+
+            Remove-Item $passFile, $askpass, $nul -Force -ErrorAction SilentlyContinue
+            if (Test-Path (Join-Path $env:TEMP "ssh_add_err.txt")) {
+              Get-Content (Join-Path $env:TEMP "ssh_add_err.txt") | Write-Host
+            }
+
+            if ($p.ExitCode -ne 0) {
+              throw @"
+ssh-add that bai (exit $($p.ExitCode)). Passphrase sai, hoac ssh-agent loi.
+
+Cach on dinh nhat: tao key tren may KHONG passphrase, Import .pub len cPanel:
+  ssh-keygen -t rsa -b 2048 -f `$env:USERPROFILE\.ssh\github_ci -N '""'
+  Roi cPanel -> Manage SSH Keys -> Import Key (dan public key) -> Authorize
+"@
+            }
+
+            $useAgent = $true
+            Write-Host "Key unlocked OK"
+          }
+
           $sshBase = @(
             "-o", "BatchMode=yes",
             "-o", "IdentitiesOnly=yes",
             "-o", "StrictHostKeyChecking=accept-new",
             "-o", "ConnectTimeout=20",
-            "-i", $keyFile,
             "-p", $port
           )
+          if (-not $useAgent) { $sshBase += @("-i", $keyFile) }
 
           Write-Host "==> SSH test"
           & ssh @sshBase $remote "mkdir -p '$remoteDir' && echo SSH_OK"
           if ($LASTEXITCODE -ne 0) {
-            throw "SSH that bai. Neu key co passphrase: tao key moi KHONG passphrase. Neu Connection closed: firewall/IP."
+            throw "SSH that bai. Kiem tra passphrase / Authorize public key / firewall."
           }
 
           Write-Host "==> Upload archive"
@@ -141,9 +187,9 @@ Cach fix (2 phut):
             "-o", "IdentitiesOnly=yes",
             "-o", "StrictHostKeyChecking=accept-new",
             "-o", "ConnectTimeout=20",
-            "-i", $keyFile,
             "-P", $port
           )
+          if (-not $useAgent) { $scpArgs += @("-i", $keyFile) }
           & scp @scpArgs "solexpress-deploy.tar.gz" "${remote}:${remoteDir}/solexpress-deploy.tar.gz"
           if ($LASTEXITCODE -ne 0) { throw "SCP upload failed" }
 

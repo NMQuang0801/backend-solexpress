@@ -1,6 +1,7 @@
 name: Deploy to cPanel
 
-# Chỉ chạy khi bấm "Run workflow" trên GitHub Actions
+# Chỉ chạy khi bấm "Run workflow"
+# Chạy trên máy bạn (self-hosted) vì firewall cPanel chặn IP GitHub Actions
 on:
   workflow_dispatch:
 
@@ -11,7 +12,10 @@ concurrency:
 jobs:
   deploy:
     name: Build & Deploy
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Checkout
@@ -31,10 +35,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "18"
-          cache: npm
-          cache-dependency-path: |
-            backend.solexpress/package-lock.json
-            portal.solexpress/package-lock.json
 
       - name: Install frontend dependencies
         id: fe_install
@@ -57,153 +57,119 @@ jobs:
         continue-on-error: true
         if: steps.fe_build.outcome == 'success'
         run: |
+          rm -rf deploy
           mkdir -p deploy/backend deploy/frontend
 
-          rsync -a \
-            --exclude 'node_modules' \
-            --exclude '.env' \
-            --exclude '.env.*' \
-            --exclude 'src/logs' \
-            --exclude '*.zip' \
-            --exclude '.vscode' \
-            backend.solexpress/ deploy/backend/
+          if command -v rsync >/dev/null 2>&1; then
+            rsync -a \
+              --exclude 'node_modules' \
+              --exclude '.env' \
+              --exclude '.env.*' \
+              --exclude 'src/logs' \
+              --exclude '*.zip' \
+              --exclude '.vscode' \
+              backend.solexpress/ deploy/backend/
+            rsync -a portal.solexpress/build/ deploy/frontend/
+          else
+            # Windows Git Bash fallback (no rsync)
+            cp -R backend.solexpress/. deploy/backend/
+            rm -rf deploy/backend/node_modules deploy/backend/src/logs 2>/dev/null || true
+            rm -f deploy/backend/.env deploy/backend/.env.* 2>/dev/null || true
+            cp -R portal.solexpress/build/. deploy/frontend/
+          fi
 
-          rsync -a portal.solexpress/build/ deploy/frontend/
-
-          # 1 file duy nhất → ít kết nối SSH hơn (tránh firewall cPanel chặn)
           tar -czf solexpress-deploy.tar.gz -C deploy backend frontend
           ls -lh solexpress-deploy.tar.gz
 
-      - name: Test SSH connectivity
-        id: ssh_test
+      - name: Upload & deploy via SSH (from your PC IP)
+        id: deploy_ssh
         continue-on-error: true
         if: steps.prepare.outcome == 'success'
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          passphrase: ${{ secrets.SSH_KEY_PASSPHRASE }}
-          port: ${{ steps.meta.outputs.ssh_port }}
-          timeout: 60s
-          command_timeout: 30s
-          script: |
-            set -e
-            echo "SSH OK as $(whoami) on $(hostname)"
-            echo "Home=$HOME"
-            mkdir -p "$HOME/solexpress-ci"
-            touch "$HOME/solexpress-ci/.write-test"
-            rm -f "$HOME/solexpress-ci/.write-test"
-            command -v rsync >/dev/null || echo "WARN: rsync missing"
-            command -v tar >/dev/null
-            test -d "${{ secrets.BE_REMOTE_PATH }}" || echo "WARN: BE_REMOTE_PATH not found: ${{ secrets.BE_REMOTE_PATH }}"
-            test -d "${{ secrets.FE_REMOTE_PATH }}" || echo "WARN: FE_REMOTE_PATH not found: ${{ secrets.FE_REMOTE_PATH }}"
-
-      - name: Upload deploy archive via rsync/SSH
-        id: upload
-        continue-on-error: true
-        if: steps.ssh_test.outcome == 'success'
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
           SSH_PORT: ${{ steps.meta.outputs.ssh_port }}
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SSH_KEY_PASSPHRASE: ${{ secrets.SSH_KEY_PASSPHRASE }}
+          BE_REMOTE_PATH: ${{ secrets.BE_REMOTE_PATH }}
+          FE_REMOTE_PATH: ${{ secrets.FE_REMOTE_PATH }}
+          NODE_VENV_PATH: ${{ secrets.NODE_VENV_PATH }}
         run: |
           set -euo pipefail
 
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
+          KEY_FILE="$HOME/.ssh/github_actions_deploy_key"
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh" 2>/dev/null || true
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > "$KEY_FILE"
+          chmod 600 "$KEY_FILE" 2>/dev/null || true
 
-          # Non-interactive unlock for passphrase-protected key
-          cat > ~/.ssh/askpass.sh <<'EOF'
+          # Fix ACL on Windows OpenSSH if available
+          if command -v icacls.exe >/dev/null 2>&1; then
+            icacls.exe "$(cygpath -w "$KEY_FILE" 2>/dev/null || echo "$KEY_FILE")" /inheritance:r >/dev/null 2>&1 || true
+          fi
+
+          ASKPASS="$HOME/.ssh/askpass_deploy.sh"
+          cat > "$ASKPASS" <<'EOF'
           #!/bin/sh
           printf '%s\n' "$SSH_KEY_PASSPHRASE"
           EOF
-          chmod 700 ~/.ssh/askpass.sh
+          chmod 700 "$ASKPASS" 2>/dev/null || true
 
           eval "$(ssh-agent -s)"
-          DISPLAY=:0 SSH_ASKPASS="$HOME/.ssh/askpass.sh" SSH_ASKPASS_REQUIRE=force \
-            ssh-add ~/.ssh/deploy_key
-
-          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
-
-          REMOTE_DIR="/home/${SSH_USERNAME}/solexpress-ci"
-          SSH_BASE=(ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -p "$SSH_PORT")
-
-          echo "==> Ensure remote dir exists"
-          "${SSH_BASE[@]}" "${SSH_USERNAME}@${SSH_HOST}" "mkdir -p '${REMOTE_DIR}'"
-
-          echo "==> Upload archive with rsync"
-          if rsync -avz --progress \
-            -e "ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -p ${SSH_PORT}" \
-            solexpress-deploy.tar.gz \
-            "${SSH_USERNAME}@${SSH_HOST}:${REMOTE_DIR}/solexpress-deploy.tar.gz"; then
-            echo "Upload OK (rsync)"
-            exit 0
+          if [ -n "${SSH_KEY_PASSPHRASE:-}" ]; then
+            DISPLAY="${DISPLAY:-:0}" SSH_ASKPASS="$ASKPASS" SSH_ASKPASS_REQUIRE=force \
+              ssh-add "$KEY_FILE" </dev/null
+          else
+            ssh-add "$KEY_FILE" </dev/null
           fi
 
-          echo "==> rsync failed, fallback to scp"
-          scp -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -P "$SSH_PORT" \
+          SSH_COMMON=(-o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new)
+          REMOTE="${SSH_USERNAME}@${SSH_HOST}"
+          REMOTE_DIR="/home/${SSH_USERNAME}/solexpress-ci"
+
+          echo "==> SSH test"
+          ssh "${SSH_COMMON[@]}" -p "$SSH_PORT" "$REMOTE" "mkdir -p '$REMOTE_DIR' && echo SSH_OK"
+
+          echo "==> Upload archive"
+          scp "${SSH_COMMON[@]}" -P "$SSH_PORT" \
             solexpress-deploy.tar.gz \
-            "${SSH_USERNAME}@${SSH_HOST}:${REMOTE_DIR}/solexpress-deploy.tar.gz"
+            "${REMOTE}:${REMOTE_DIR}/solexpress-deploy.tar.gz"
 
-          echo "Upload OK (scp)"
+          echo "==> Extract, sync, npm install, restart"
+          ssh "${SSH_COMMON[@]}" -p "$SSH_PORT" "$REMOTE" bash -s <<EOF
+          set -e
+          BE_PATH='$BE_REMOTE_PATH'
+          FE_PATH='$FE_REMOTE_PATH'
+          NODE_VENV='$NODE_VENV_PATH'
+          CI_DIR="\$HOME/solexpress-ci"
 
-      - name: Extract, sync, npm install & restart
-        id: sync
-        continue-on-error: true
-        if: steps.upload.outcome == 'success'
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          passphrase: ${{ secrets.SSH_KEY_PASSPHRASE }}
-          port: ${{ steps.meta.outputs.ssh_port }}
-          timeout: 60s
-          command_timeout: 20m
-          script: |
-            set -e
+          mkdir -p "\$CI_DIR/extract"
+          tar -xzf "\$CI_DIR/solexpress-deploy.tar.gz" -C "\$CI_DIR/extract"
 
-            BE_PATH="${{ secrets.BE_REMOTE_PATH }}"
-            FE_PATH="${{ secrets.FE_REMOTE_PATH }}"
-            NODE_VENV="${{ secrets.NODE_VENV_PATH }}"
-            CI_DIR="$HOME/solexpress-ci"
+          mkdir -p "\$BE_PATH" "\$FE_PATH"
+          if command -v rsync >/dev/null 2>&1; then
+            rsync -a --exclude '.env' --exclude '.env.*' --exclude 'node_modules' --exclude 'src/logs' \
+              "\$CI_DIR/extract/backend/" "\$BE_PATH/"
+            rsync -a "\$CI_DIR/extract/frontend/" "\$FE_PATH/"
+          else
+            cp -R "\$CI_DIR/extract/backend/." "\$BE_PATH/"
+            cp -R "\$CI_DIR/extract/frontend/." "\$FE_PATH/"
+          fi
 
-            echo "==> Extract archive"
-            mkdir -p "$CI_DIR/extract"
-            tar -xzf "$CI_DIR/solexpress-deploy.tar.gz" -C "$CI_DIR/extract"
+          cd "\$BE_PATH"
+          if [ -n "\$NODE_VENV" ] && [ -f "\$NODE_VENV/bin/activate" ]; then
+            # shellcheck disable=SC1090
+            source "\$NODE_VENV/bin/activate"
+          fi
+          npm install --production --omit=dev
 
-            echo "==> Sync backend (keep .env & node_modules)"
-            mkdir -p "$BE_PATH"
-            rsync -a \
-              --exclude '.env' \
-              --exclude '.env.*' \
-              --exclude 'node_modules' \
-              --exclude 'src/logs' \
-              "$CI_DIR/extract/backend/" "$BE_PATH/"
+          mkdir -p "\$BE_PATH/tmp"
+          touch "\$BE_PATH/tmp/restart.txt"
+          rm -rf "\$CI_DIR"
+          echo "Deploy finished OK"
+          EOF
 
-            echo "==> Sync frontend"
-            mkdir -p "$FE_PATH"
-            rsync -a "$CI_DIR/extract/frontend/" "$FE_PATH/"
-
-            echo "==> Install backend dependencies"
-            cd "$BE_PATH"
-            if [ -n "$NODE_VENV" ] && [ -f "$NODE_VENV/bin/activate" ]; then
-              # shellcheck disable=SC1090
-              source "$NODE_VENV/bin/activate"
-            fi
-            npm install --production --omit=dev
-
-            echo "==> Restart Node.js app (Passenger)"
-            mkdir -p "$BE_PATH/tmp"
-            touch "$BE_PATH/tmp/restart.txt"
-
-            rm -rf "$CI_DIR"
-            echo "Deploy finished at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "Deploy pipeline OK"
 
       - name: Evaluate results
         id: result
@@ -219,12 +185,8 @@ jobs:
             ERRORS="- Frontend: build thất bại"
           elif [ "${{ steps.prepare.outcome }}" != "success" ]; then
             ERRORS="- Chuẩn bị package thất bại"
-          elif [ "${{ steps.ssh_test.outcome }}" != "success" ]; then
-            ERRORS="- SSH kết nối thất bại (sai host/user/key/passphrase/port, hoặc firewall chặn GitHub Actions)"
-          elif [ "${{ steps.upload.outcome }}" != "success" ]; then
-            ERRORS="- Upload archive thất bại (rsync/scp/firewall/quota). Xem log bước Upload deploy archive."
-          elif [ "${{ steps.sync.outcome }}" != "success" ]; then
-            ERRORS="- Sync/npm install/restart thất bại trên server"
+          elif [ "${{ steps.deploy_ssh.outcome }}" != "success" ]; then
+            ERRORS="- Deploy SSH thất bại (kiểm tra self-hosted runner đang online + SSH key)"
           else
             FE_OK=true
             BE_OK=true
@@ -267,17 +229,8 @@ jobs:
             TITLE="❌ Deploy THẤT BẠI"
           fi
 
-          if [ "$FE_OK" = "true" ]; then
-            FE_STATUS="✅ Thành công"
-          else
-            FE_STATUS="❌ Thất bại"
-          fi
-
-          if [ "$BE_OK" = "true" ]; then
-            BE_STATUS="✅ Thành công"
-          else
-            BE_STATUS="❌ Thất bại"
-          fi
+          if [ "$FE_OK" = "true" ]; then FE_STATUS="✅ Thành công"; else FE_STATUS="❌ Thất bại"; fi
+          if [ "$BE_OK" = "true" ]; then BE_STATUS="✅ Thành công"; else BE_STATUS="❌ Thất bại"; fi
 
           ERRORS_ESCAPED=$(printf '%s' "$ERRORS" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
 
@@ -288,6 +241,7 @@ jobs:
           <b>Người chạy:</b> <code>${ACTOR}</code>
           <b>Bắt đầu:</b> <code>${STARTED_AT}</code>
           <b>Kết thúc:</b> <code>${FINISHED_AT}</code>
+          <b>Runner:</b> self-hosted (máy local)
 
           <b>Frontend:</b> ${FE_STATUS}
           <b>Backend:</b> ${BE_STATUS}

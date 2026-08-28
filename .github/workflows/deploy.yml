@@ -1,7 +1,7 @@
 name: Deploy to cPanel
 
 # Chỉ chạy khi bấm "Run workflow"
-# Chạy trên máy bạn (self-hosted) vì firewall cPanel chặn IP GitHub Actions
+# Chạy trên máy bạn (self-hosted Windows) vì firewall cPanel chặn IP GitHub Actions
 on:
   workflow_dispatch:
 
@@ -15,7 +15,7 @@ jobs:
     runs-on: self-hosted
     defaults:
       run:
-        shell: bash
+        shell: powershell
 
     steps:
       - name: Checkout
@@ -24,12 +24,13 @@ jobs:
       - name: Record build meta
         id: meta
         run: |
-          echo "started_at=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_OUTPUT"
-          echo "branch=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          echo "actor=${GITHUB_ACTOR}" >> "$GITHUB_OUTPUT"
-          PORT="${{ secrets.SSH_PORT }}"
-          if [ -z "$PORT" ]; then PORT=22; fi
-          echo "ssh_port=$PORT" >> "$GITHUB_OUTPUT"
+          $started = [DateTime]::UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + " UTC"
+          "started_at=$started" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "branch=$env:GITHUB_REF_NAME" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "actor=$env:GITHUB_ACTOR" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $port = "${{ secrets.SSH_PORT }}"
+          if ([string]::IsNullOrWhiteSpace($port)) { $port = "22" }
+          "ssh_port=$port" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -49,7 +50,7 @@ jobs:
         working-directory: portal.solexpress
         env:
           REACT_APP_API_URL: ${{ secrets.REACT_APP_API_URL }}
-          CI: false
+          CI: "false"
         run: npm run build
 
       - name: Prepare deploy packages
@@ -57,31 +58,20 @@ jobs:
         continue-on-error: true
         if: steps.fe_build.outcome == 'success'
         run: |
-          rm -rf deploy
-          mkdir -p deploy/backend deploy/frontend
+          if (Test-Path deploy) { Remove-Item -Recurse -Force deploy }
+          New-Item -ItemType Directory -Force -Path deploy\backend, deploy\frontend | Out-Null
 
-          if command -v rsync >/dev/null 2>&1; then
-            rsync -a \
-              --exclude 'node_modules' \
-              --exclude '.env' \
-              --exclude '.env.*' \
-              --exclude 'src/logs' \
-              --exclude '*.zip' \
-              --exclude '.vscode' \
-              backend.solexpress/ deploy/backend/
-            rsync -a portal.solexpress/build/ deploy/frontend/
-          else
-            # Windows Git Bash fallback (no rsync)
-            cp -R backend.solexpress/. deploy/backend/
-            rm -rf deploy/backend/node_modules deploy/backend/src/logs 2>/dev/null || true
-            rm -f deploy/backend/.env deploy/backend/.env.* 2>/dev/null || true
-            cp -R portal.solexpress/build/. deploy/frontend/
-          fi
+          robocopy backend.solexpress deploy\backend /E /XD node_modules src\logs .vscode /XF *.zip .env .env.* /NFL /NDL /NJH /NJS /nc /ns /np
+          if ($LASTEXITCODE -ge 8) { throw "robocopy backend failed: $LASTEXITCODE" }
 
+          robocopy portal.solexpress\build deploy\frontend /E /NFL /NDL /NJH /NJS /nc /ns /np
+          if ($LASTEXITCODE -ge 8) { throw "robocopy frontend failed: $LASTEXITCODE" }
+
+          if (Test-Path solexpress-deploy.tar.gz) { Remove-Item -Force solexpress-deploy.tar.gz }
           tar -czf solexpress-deploy.tar.gz -C deploy backend frontend
-          ls -lh solexpress-deploy.tar.gz
+          Get-Item solexpress-deploy.tar.gz | Format-List Name, Length
 
-      - name: Upload & deploy via SSH (from your PC IP)
+      - name: Upload & deploy via SSH
         id: deploy_ssh
         continue-on-error: true
         if: steps.prepare.outcome == 'success'
@@ -95,117 +85,142 @@ jobs:
           FE_REMOTE_PATH: ${{ secrets.FE_REMOTE_PATH }}
           NODE_VENV_PATH: ${{ secrets.NODE_VENV_PATH }}
         run: |
-          set -euo pipefail
+          $ErrorActionPreference = "Stop"
 
-          KEY_FILE="$HOME/.ssh/github_actions_deploy_key"
-          mkdir -p "$HOME/.ssh"
-          chmod 700 "$HOME/.ssh" 2>/dev/null || true
-          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > "$KEY_FILE"
-          chmod 600 "$KEY_FILE" 2>/dev/null || true
+          $sshDir = Join-Path $env:USERPROFILE ".ssh"
+          New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
+          $keyFile = Join-Path $sshDir "github_actions_deploy_key"
 
-          # Fix ACL on Windows OpenSSH if available
-          if command -v icacls.exe >/dev/null 2>&1; then
-            icacls.exe "$(cygpath -w "$KEY_FILE" 2>/dev/null || echo "$KEY_FILE")" /inheritance:r >/dev/null 2>&1 || true
-          fi
+          # Write private key (normalize newlines)
+          $key = ($env:SSH_PRIVATE_KEY -replace "`r", "").Trim() + "`n"
+          [System.IO.File]::WriteAllText($keyFile, $key)
 
-          ASKPASS="$HOME/.ssh/askpass_deploy.sh"
-          cat > "$ASKPASS" <<'EOF'
-          #!/bin/sh
-          printf '%s\n' "$SSH_KEY_PASSPHRASE"
-          EOF
-          chmod 700 "$ASKPASS" 2>/dev/null || true
+          # Restrict ACL for OpenSSH on Windows
+          icacls $keyFile /inheritance:r | Out-Null
+          icacls $keyFile /grant:r "$($env:USERNAME):(R)" | Out-Null
 
-          eval "$(ssh-agent -s)"
-          if [ -n "${SSH_KEY_PASSPHRASE:-}" ]; then
-            DISPLAY="${DISPLAY:-:0}" SSH_ASKPASS="$ASKPASS" SSH_ASKPASS_REQUIRE=force \
-              ssh-add "$KEY_FILE" </dev/null
-          else
-            ssh-add "$KEY_FILE" </dev/null
-          fi
+          $hostName = $env:SSH_HOST
+          $user = $env:SSH_USERNAME
+          $port = $env:SSH_PORT
+          $remote = "${user}@${hostName}"
+          $remoteDir = "/home/${user}/solexpress-ci"
+          $passphrase = $env:SSH_KEY_PASSPHRASE
 
-          SSH_COMMON=(-o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new)
-          REMOTE="${SSH_USERNAME}@${SSH_HOST}"
-          REMOTE_DIR="/home/${SSH_USERNAME}/solexpress-ci"
+          $useAgent = $false
+          if (-not [string]::IsNullOrWhiteSpace($passphrase)) {
+            Write-Host "Key co passphrase. Can ssh-agent..."
+            $svc = Get-Service ssh-agent -ErrorAction SilentlyContinue
+            if ($null -eq $svc) {
+              throw "Khong co ssh-agent. Hay tao key github_deploy KHONG passphrase (de trong Key Password tren cPanel)."
+            }
+            if ($svc.StartType -eq "Disabled") {
+              Start-Process -FilePath "sc.exe" -ArgumentList "config ssh-agent start= auto" -Verb RunAs -Wait -ErrorAction SilentlyContinue
+            }
+            if ($svc.Status -ne "Running") { Start-Service ssh-agent }
 
-          echo "==> SSH test"
-          ssh "${SSH_COMMON[@]}" -p "$SSH_PORT" "$REMOTE" "mkdir -p '$REMOTE_DIR' && echo SSH_OK"
+            # Windows OpenSSH: ssh-add khong nhan passphrase qua stdin on dinh.
+            # Goi ssh-add; neu fail -> huong dan tao key khong passphrase.
+            $add = Start-Process -FilePath "ssh-add" -ArgumentList $keyFile -NoNewWindow -Wait -PassThru
+            if ($add.ExitCode -ne 0) {
+              throw "ssh-add can passphrase tuong tac. Tao key MOI tren cPanel (Key Password de TRONG), Authorize, roi cap nhat secret SSH_PRIVATE_KEY."
+            }
+            $useAgent = $true
+          }
 
-          echo "==> Upload archive"
-          scp "${SSH_COMMON[@]}" -P "$SSH_PORT" \
-            solexpress-deploy.tar.gz \
-            "${REMOTE}:${REMOTE_DIR}/solexpress-deploy.tar.gz"
+          $sshBase = @(
+            "-o", "IdentitiesOnly=yes",
+            "-o", "StrictHostKeyChecking=accept-new",
+            "-p", $port
+          )
+          if (-not $useAgent) { $sshBase += @("-i", $keyFile) }
 
-          echo "==> Extract, sync, npm install, restart"
-          ssh "${SSH_COMMON[@]}" -p "$SSH_PORT" "$REMOTE" bash -s <<EOF
+          Write-Host "==> SSH test"
+          & ssh @sshBase $remote "mkdir -p '$remoteDir' && echo SSH_OK"
+          if ($LASTEXITCODE -ne 0) { throw "SSH test failed" }
+
+          Write-Host "==> Upload archive"
+          $scpArgs = @(
+            "-o", "IdentitiesOnly=yes",
+            "-o", "StrictHostKeyChecking=accept-new",
+            "-P", $port
+          )
+          if (-not $useAgent) { $scpArgs += @("-i", $keyFile) }
+          & scp @scpArgs "solexpress-deploy.tar.gz" "${remote}:${remoteDir}/solexpress-deploy.tar.gz"
+          if ($LASTEXITCODE -ne 0) { throw "SCP upload failed" }
+
+          $be = $env:BE_REMOTE_PATH
+          $fe = $env:FE_REMOTE_PATH
+          $venv = $env:NODE_VENV_PATH
+
+          $remoteScript = @"
           set -e
-          BE_PATH='$BE_REMOTE_PATH'
-          FE_PATH='$FE_REMOTE_PATH'
-          NODE_VENV='$NODE_VENV_PATH'
-          CI_DIR="\$HOME/solexpress-ci"
-
-          mkdir -p "\$CI_DIR/extract"
-          tar -xzf "\$CI_DIR/solexpress-deploy.tar.gz" -C "\$CI_DIR/extract"
-
-          mkdir -p "\$BE_PATH" "\$FE_PATH"
+          BE_PATH='$be'
+          FE_PATH='$fe'
+          NODE_VENV='$venv'
+          CI_DIR=`$HOME/solexpress-ci
+          mkdir -p "`$CI_DIR/extract"
+          tar -xzf "`$CI_DIR/solexpress-deploy.tar.gz" -C "`$CI_DIR/extract"
+          mkdir -p "`$BE_PATH" "`$FE_PATH"
           if command -v rsync >/dev/null 2>&1; then
-            rsync -a --exclude '.env' --exclude '.env.*' --exclude 'node_modules' --exclude 'src/logs' \
-              "\$CI_DIR/extract/backend/" "\$BE_PATH/"
-            rsync -a "\$CI_DIR/extract/frontend/" "\$FE_PATH/"
+            rsync -a --exclude '.env' --exclude '.env.*' --exclude 'node_modules' --exclude 'src/logs' "`$CI_DIR/extract/backend/" "`$BE_PATH/"
+            rsync -a "`$CI_DIR/extract/frontend/" "`$FE_PATH/"
           else
-            cp -R "\$CI_DIR/extract/backend/." "\$BE_PATH/"
-            cp -R "\$CI_DIR/extract/frontend/." "\$FE_PATH/"
+            cp -R "`$CI_DIR/extract/backend/." "`$BE_PATH/"
+            cp -R "`$CI_DIR/extract/frontend/." "`$FE_PATH/"
           fi
-
-          cd "\$BE_PATH"
-          if [ -n "\$NODE_VENV" ] && [ -f "\$NODE_VENV/bin/activate" ]; then
-            # shellcheck disable=SC1090
-            source "\$NODE_VENV/bin/activate"
+          cd "`$BE_PATH"
+          if [ -n "`$NODE_VENV" ] && [ -f "`$NODE_VENV/bin/activate" ]; then
+            source "`$NODE_VENV/bin/activate"
           fi
           npm install --production --omit=dev
+          mkdir -p "`$BE_PATH/tmp"
+          touch "`$BE_PATH/tmp/restart.txt"
+          rm -rf "`$CI_DIR"
+          echo Deploy finished OK
+          "@
 
-          mkdir -p "\$BE_PATH/tmp"
-          touch "\$BE_PATH/tmp/restart.txt"
-          rm -rf "\$CI_DIR"
-          echo "Deploy finished OK"
-          EOF
+          # Normalize to LF for remote bash
+          $remoteScript = $remoteScript -replace "`r`n", "`n"
 
-          echo "Deploy pipeline OK"
+          Write-Host "==> Extract, sync, npm install, restart"
+          $remoteScript | & ssh @sshBase $remote "bash -s"
+          if ($LASTEXITCODE -ne 0) { throw "Remote deploy script failed" }
+
+          Write-Host "Deploy pipeline OK"
 
       - name: Evaluate results
         id: result
         if: always()
         run: |
-          FE_OK=false
-          BE_OK=false
-          ERRORS=""
+          $feOk = "false"
+          $beOk = "false"
+          $errors = ""
 
-          if [ "${{ steps.fe_install.outcome }}" != "success" ]; then
-            ERRORS="- Frontend: npm ci thất bại"
-          elif [ "${{ steps.fe_build.outcome }}" != "success" ]; then
-            ERRORS="- Frontend: build thất bại"
-          elif [ "${{ steps.prepare.outcome }}" != "success" ]; then
-            ERRORS="- Chuẩn bị package thất bại"
-          elif [ "${{ steps.deploy_ssh.outcome }}" != "success" ]; then
-            ERRORS="- Deploy SSH thất bại (kiểm tra self-hosted runner đang online + SSH key)"
-          else
-            FE_OK=true
-            BE_OK=true
-            ERRORS="Không có"
-          fi
+          if ("${{ steps.fe_install.outcome }}" -ne "success") {
+            $errors = "- Frontend: npm ci that bai"
+          } elseif ("${{ steps.fe_build.outcome }}" -ne "success") {
+            $errors = "- Frontend: build that bai"
+          } elseif ("${{ steps.prepare.outcome }}" -ne "success") {
+            $errors = "- Chuan bi package that bai"
+          } elseif ("${{ steps.deploy_ssh.outcome }}" -ne "success") {
+            $errors = "- Deploy SSH that bai (runner online + SSH key/passphrase)"
+          } else {
+            $feOk = "true"
+            $beOk = "true"
+            $errors = "Khong co"
+          }
 
-          {
-            echo "fe_ok=$FE_OK"
-            echo "be_ok=$BE_OK"
-            echo "errors<<EOF"
-            echo "$ERRORS"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          "fe_ok=$feOk" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "be_ok=$beOk" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "errors<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $errors | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-          if [ "$FE_OK" = "true" ] && [ "$BE_OK" = "true" ]; then
-            echo "overall=success" >> "$GITHUB_OUTPUT"
-          else
-            echo "overall=failure" >> "$GITHUB_OUTPUT"
-          fi
+          if ($feOk -eq "true" -and $beOk -eq "true") {
+            "overall=success" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } else {
+            "overall=failure" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
 
       - name: Notify Telegram
         if: always()
@@ -221,47 +236,39 @@ jobs:
           ERRORS: ${{ steps.result.outputs.errors }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          FINISHED_AT=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
+          $finished = [DateTime]::UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + " UTC"
+          if ($env:OVERALL -eq "success") { $title = "✅ Deploy THANH CONG" } else { $title = "❌ Deploy THAT BAI" }
+          if ($env:FE_OK -eq "true") { $fe = "✅ Thanh cong" } else { $fe = "❌ That bai" }
+          if ($env:BE_OK -eq "true") { $be = "✅ Thanh cong" } else { $be = "❌ That bai" }
 
-          if [ "$OVERALL" = "success" ]; then
-            TITLE="✅ Deploy THÀNH CÔNG"
-          else
-            TITLE="❌ Deploy THẤT BẠI"
-          fi
+          $err = [System.Net.WebUtility]::HtmlEncode($env:ERRORS)
+          $text = @"
+          <b>$title</b>
 
-          if [ "$FE_OK" = "true" ]; then FE_STATUS="✅ Thành công"; else FE_STATUS="❌ Thất bại"; fi
-          if [ "$BE_OK" = "true" ]; then BE_STATUS="✅ Thành công"; else BE_STATUS="❌ Thất bại"; fi
+          <b>Nhanh:</b> <code>$($env:BRANCH)</code>
+          <b>Nguoi chay:</b> <code>$($env:ACTOR)</code>
+          <b>Bat dau:</b> <code>$($env:STARTED_AT)</code>
+          <b>Ket thuc:</b> <code>$finished</code>
+          <b>Runner:</b> self-hosted Windows
 
-          ERRORS_ESCAPED=$(printf '%s' "$ERRORS" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+          <b>Frontend:</b> $fe
+          <b>Backend:</b> $be
 
-          MESSAGE=$(cat <<EOF
-          <b>${TITLE}</b>
+          <b>Loi:</b>
+          <pre>$err</pre>
 
-          <b>Nhánh:</b> <code>${BRANCH}</code>
-          <b>Người chạy:</b> <code>${ACTOR}</code>
-          <b>Bắt đầu:</b> <code>${STARTED_AT}</code>
-          <b>Kết thúc:</b> <code>${FINISHED_AT}</code>
-          <b>Runner:</b> self-hosted (máy local)
+          <a href="$($env:RUN_URL)">Xem chi tiet GitHub Actions</a>
+          "@
 
-          <b>Frontend:</b> ${FE_STATUS}
-          <b>Backend:</b> ${BE_STATUS}
-
-          <b>Lỗi:</b>
-          <pre>${ERRORS_ESCAPED}</pre>
-
-          <a href="${RUN_URL}">Xem chi tiết trên GitHub Actions</a>
-          EOF
-          )
-
-          MESSAGE=$(printf '%s' "$MESSAGE" | sed 's/^[[:space:]]*//')
-
-          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d parse_mode="HTML" \
-            --data-urlencode text="${MESSAGE}"
+          $body = @{
+            chat_id = $env:TELEGRAM_CHAT_ID
+            parse_mode = "HTML"
+            text = $text
+          }
+          Invoke-RestMethod -Method Post -Uri "https://api.telegram.org/bot$($env:TELEGRAM_BOT_TOKEN)/sendMessage" -Body $body | Out-Null
 
       - name: Fail job if deploy incomplete
         if: always() && steps.result.outputs.overall != 'success'
         run: |
-          echo "Deploy thất bại — xem Telegram / log Actions"
+          Write-Error "Deploy that bai — xem Telegram / log Actions"
           exit 1

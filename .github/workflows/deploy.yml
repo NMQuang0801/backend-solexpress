@@ -82,7 +82,8 @@ jobs:
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_KEY_PASSPHRASE }}
           port: ${{ steps.meta.outputs.ssh_port }}
           timeout: 60s
           command_timeout: 30s
@@ -106,7 +107,8 @@ jobs:
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_KEY_PASSPHRASE }}
           port: ${{ steps.meta.outputs.ssh_port }}
           source: "solexpress-deploy.tar.gz"
           target: "~/solexpress-ci"
@@ -122,7 +124,8 @@ jobs:
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_KEY_PASSPHRASE }}
           port: ${{ steps.meta.outputs.ssh_port }}
           timeout: 60s
           command_timeout: 20m
@@ -181,7 +184,7 @@ jobs:
           elif [ "${{ steps.prepare.outcome }}" != "success" ]; then
             ERRORS="- Chuẩn bị package thất bại"
           elif [ "${{ steps.ssh_test.outcome }}" != "success" ]; then
-            ERRORS="- SSH kết nối thất bại (sai host/user/password/port, hoặc firewall chặn GitHub Actions)"
+            ERRORS="- SSH kết nối thất bại (sai host/user/key/passphrase/port, hoặc firewall chặn GitHub Actions)"
           elif [ "${{ steps.upload.outcome }}" != "success" ]; then
             ERRORS="- Upload archive thất bại (SCP/firewall/quota)"
           elif [ "${{ steps.sync.outcome }}" != "success" ]; then

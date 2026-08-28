@@ -79,7 +79,7 @@ jobs:
       - name: Upload & deploy via SSH
         id: deploy_ssh
         continue-on-error: true
-        timeout-minutes: 8
+        timeout-minutes: 20
         if: steps.prepare.outcome == 'success'
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}

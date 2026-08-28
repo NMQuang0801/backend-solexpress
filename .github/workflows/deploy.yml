@@ -115,11 +115,7 @@ jobs:
 
           if ($keyEncrypted) {
             if ([string]::IsNullOrWhiteSpace($passphrase)) {
-              throw @"
-Private key co passphrase nhung secret SSH_KEY_PASSPHRASE dang trong.
-Them secret SSH_KEY_PASSPHRASE = mat khau key tren cPanel.
-HOAC tao key tren may (khong pass) roi Import public key len cPanel (xem huong dan).
-"@
+              throw "Private key co passphrase nhung secret SSH_KEY_PASSPHRASE dang trong. Them SSH_KEY_PASSPHRASE hoac tao key local khong pass roi Import .pub len cPanel."
             }
 
             Write-Host "==> Unlock key bang SSH_ASKPASS (khong treo)"
@@ -128,7 +124,7 @@ HOAC tao key tren may (khong pass) roi Import public key len cPanel (xem huong d
               throw "Thieu ssh-agent service. Bat OpenSSH Authentication Agent trong Services."
             }
             if ($svc.StartType -eq "Disabled") {
-              throw "ssh-agent dang Disabled. Chay (Admin): Set-Service ssh-agent -StartupType Manual; Start-Service ssh-agent"
+              throw "ssh-agent dang Disabled. Chay Admin PowerShell: Set-Service ssh-agent -StartupType Manual; Start-Service ssh-agent"
             }
             if ($svc.Status -ne "Running") { Start-Service ssh-agent }
 
@@ -158,13 +154,7 @@ HOAC tao key tren may (khong pass) roi Import public key len cPanel (xem huong d
             }
 
             if ($p.ExitCode -ne 0) {
-              throw @"
-ssh-add that bai (exit $($p.ExitCode)). Passphrase sai, hoac ssh-agent loi.
-
-Cach on dinh nhat: tao key tren may KHONG passphrase, Import .pub len cPanel:
-  ssh-keygen -t rsa -b 2048 -f `$env:USERPROFILE\.ssh\github_ci -N '""'
-  Roi cPanel -> Manage SSH Keys -> Import Key (dan public key) -> Authorize
-"@
+              throw "ssh-add that bai (exit $($p.ExitCode)). Passphrase sai, hoac tao key local khong pass roi Import .pub len cPanel."
             }
 
             $useAgent = $true
